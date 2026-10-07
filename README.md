@@ -105,6 +105,7 @@ Windows drive (`/mnt/c/...`), keep build output on the Linux side or builds get 
 
 A hosted copy of the web app runs against devnet at <https://tanda-jadi.vercel.app>. It offers a
 play-money wallet, so it can be tried without installing anything.
+Every push to `main` redeploys it; the Vercel project builds from the `app/` folder.
 
 The program is live on devnet at the address below, with its config initialized and a demo token
 created. To point the scripts and the web app at it:
