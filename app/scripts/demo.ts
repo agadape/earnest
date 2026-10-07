@@ -63,8 +63,10 @@ let startedAt = 0;
 // money has already arrived and there is nothing left for this script to send.
 const alreadySent = () => undefined;
 
+// Stamped with the local clock: asking the chain for the time on every line is what gets a
+// script throttled on a public RPC node.
 async function log(message: string) {
-  const elapsed = (await chainTime()) - startedAt;
+  const elapsed = Math.round(Date.now() / 1000 - startedAt);
   console.log(`[${String(elapsed).padStart(3)}s] ${message}`);
 }
 
@@ -93,7 +95,7 @@ async function main() {
   const backerStart = await Promise.all(backers.map(({ wallet }) => balance(wallet)));
   const rinaStart = backerStart[0];
 
-  startedAt = await chainTime();
+  startedAt = Date.now() / 1000;
   const run = BigInt(Date.now());
   const terms = (id: bigint, title: string): CampaignTerms => ({
     id,

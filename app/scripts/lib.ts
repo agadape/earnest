@@ -17,19 +17,35 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   type PublicKey,
-  sendAndConfirmTransaction,
   SystemProgram,
   Transaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
 
+import { confirmSignature } from "../src/lib/confirm";
 import { formatTokens, getProgram, tokenAccount } from "../src/lib/tanda-jadi";
 
 export const RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8899";
 export const IS_LOCAL = /127\.0\.0\.1|localhost/.test(RPC_URL);
 export const USD = 1_000_000n;
 
-export const connection = new Connection(RPC_URL, "confirmed");
+/**
+ * Public RPC nodes answer 429 when asked too much. Waiting and asking again is all it takes, and
+ * a script has the patience for it.
+ */
+async function patientFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(input, init);
+    if (response.status !== 429 || attempt === 8) return response;
+    await sleep(Math.min(500 * 2 ** attempt, 8_000));
+  }
+}
+
+export const connection = new Connection(RPC_URL, {
+  commitment: "confirmed",
+  fetch: patientFetch as typeof fetch,
+  disableRetryOnRateLimit: true,
+});
 export const program = getProgram(connection);
 
 const KEYS_DIR = path.resolve(process.cwd(), ".keys");
@@ -55,8 +71,15 @@ export async function send(
   payer: Keypair,
   signers: Keypair[] = [],
 ): Promise<string> {
-  const transaction = new Transaction().add(...instructions);
-  return sendAndConfirmTransaction(connection, transaction, [payer, ...signers]);
+  const latest = await connection.getLatestBlockhash("confirmed");
+  const transaction = new Transaction({ feePayer: payer.publicKey, ...latest }).add(
+    ...instructions,
+  );
+  transaction.sign(payer, ...signers);
+  const signature = await connection.sendRawTransaction(transaction.serialize());
+  // Confirmed over plain HTTP: the websocket of a public RPC node is the first thing to be throttled.
+  await confirmSignature(connection, signature, latest.lastValidBlockHeight);
+  return signature;
 }
 
 /** Tops `wallet` up to `sol` SOL. Only a local validator hands out SOL on request. */
@@ -66,11 +89,9 @@ export async function ensureSol(wallet: PublicKey, sol: number, from?: Keypair):
   if (missing <= 0) return;
 
   if (IS_LOCAL) {
+    const { lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
     const signature = await connection.requestAirdrop(wallet, missing);
-    await connection.confirmTransaction(
-      { signature, ...(await connection.getLatestBlockhash()) },
-      "confirmed",
-    );
+    await confirmSignature(connection, signature, lastValidBlockHeight);
   } else if (from) {
     await send(
       [SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: wallet, lamports: missing })],
@@ -127,7 +148,7 @@ export async function chainTime(): Promise<number> {
 
 export async function waitUntil(timestamp: number): Promise<void> {
   while ((await chainTime()) < timestamp) {
-    await sleep(500);
+    await sleep(IS_LOCAL ? 500 : 2_000);
   }
 }
 

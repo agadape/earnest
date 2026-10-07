@@ -101,6 +101,22 @@ validator in WSL is reachable from Windows on `127.0.0.1:8899`. If the repositor
 Windows drive (`/mnt/c/...`), keep build output on the Linux side or builds get slow:
 `export CARGO_TARGET_DIR=~/target/tanda-jadi`.
 
+### Devnet
+
+The program is live on devnet at the address below, with its config initialized and a demo token
+created. To point the scripts and the web app at it:
+
+```sh
+cd app
+RPC_URL=https://api.devnet.solana.com npm run setup    # rewrites the RPC and token in .env.local
+RPC_URL=https://api.devnet.solana.com npm run demo     # optional: the scripted demo, on devnet
+npm run dev
+```
+
+The public devnet RPC node throttles quickly. The scripts wait and retry, but for a live demo put
+an RPC provider's devnet URL in `NEXT_PUBLIC_RPC_URL`. Going back to a local validator is
+`npm run setup` without `RPC_URL`.
+
 ### Program address
 
 `EsMmNdHM99LX3c3yhec5AgdteXBPyCz5kN8St3ySddzv`, from `target/deploy/tanda_jadi-keypair.json`,
