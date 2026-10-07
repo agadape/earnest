@@ -96,6 +96,12 @@ npm run keeper                 # optional: a bot that returns pledges and sends 
 To try the app without a wallet extension, add `NEXT_PUBLIC_DEMO_WALLET=1` to `app/.env.local`.
 It offers a play-money wallet kept in the browser and a button that hands out demo dollars.
 
+The web app's server also returns money by itself: when it holds a key (`FAUCET_SECRET_KEY`, or
+`app/.keys/faucet.json` in development), a campaign page asks it to send the refunds the moment
+the campaign fails, and the creator's share once that is final. A daily cron (`app/vercel.json`,
+`GET /api/settle` with `CRON_SECRET`) sweeps the campaigns nobody opened. Without a key the
+pages show buttons instead, and `npm run keeper` does the same job from a terminal.
+
 On Windows, run `make` inside WSL and the `npm` commands wherever Node is installed; the
 validator in WSL is reachable from Windows on `127.0.0.1:8899`. If the repository sits on the
 Windows drive (`/mnt/c/...`), keep build output on the Linux side or builds get slow:

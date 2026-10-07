@@ -3,33 +3,20 @@
  * nobody has to click to get their money.
  *
  *   - a campaign failed or was braked: every pledge goes back to its backer
- *   - a campaign is over (failed, braked or completed): what is the creator's is sent to them
  *   - a campaign reached its target: the fee is sent to the treasury
+ *   - a campaign is over (failed, braked or completed): what is the creator's is sent to them
  *
  * It has no special rights. The program decides who gets what; the keeper only pays the network
- * fees, from the same throwaway key the other scripts use.
+ * fees, from the same throwaway key the other scripts use. The hosted web app does the same from
+ * its server, so this is for a local validator or as a second pair of hands.
  *
  *   npm run keeper
  */
-import type { PublicKey } from "@solana/web3.js";
-
-import {
-  type Campaign,
-  claimRefundIxs,
-  collectFeeIxs,
-  creatorClaimable,
-  fee,
-  fetchCampaigns,
-  fetchConfig,
-  fetchPledges,
-  statusAt,
-  withdrawIxs,
-} from "../src/lib/tanda-jadi";
+import { planSettlement } from "../src/lib/settle";
+import { type Campaign, fetchCampaigns, fetchConfig, statusAt } from "../src/lib/tanda-jadi";
 import { chainTime, ensureSol, IS_LOCAL, keypair, program, RPC_URL, send, sleep, usd } from "./lib";
 
 const INTERVAL_MS = Number(process.env.INTERVAL_MS ?? (IS_LOCAL ? 2_000 : 10_000));
-// Each refund is two instructions; more than this does not fit in one transaction.
-const REFUNDS_PER_TRANSACTION = 5;
 
 const payer = keypair("admin");
 // Campaigns with nothing left to send. They are final, so they never need another look.
@@ -39,40 +26,17 @@ function log(campaign: Campaign, message: string) {
   console.log(`${new Date().toISOString().slice(11, 19)}  ${campaign.title || "(untitled)"}: ${message}`);
 }
 
-async function settle(campaign: Campaign, now: number, treasury: PublicKey): Promise<void> {
+async function settle(campaign: Campaign, now: number, treasury: Campaign["creator"]) {
+  const plan = await planSettlement(program, campaign, now, treasury, payer.publicKey);
+  for (const group of plan.groups) {
+    await send(group, payer);
+  }
+  if (plan.refunds > 0) log(campaign, `returned ${plan.refunds} pledge${plan.refunds === 1 ? "" : "s"}`);
+  if (plan.fee > 0n) log(campaign, `sent the ${usd(plan.fee)} fee to the treasury`);
+  if (plan.creator > 0n) log(campaign, `sent ${usd(plan.creator)} to the creator`);
+
   const status = statusAt(campaign, now);
-  if (status === "funding") return;
-
-  let refundsLeft = 0;
-  if (status === "failed" || status === "braked") {
-    const pledges = await fetchPledges(program, campaign.address);
-    refundsLeft = pledges.length;
-    for (let start = 0; start < pledges.length; start += REFUNDS_PER_TRANSACTION) {
-      const batch = pledges.slice(start, start + REFUNDS_PER_TRANSACTION);
-      const instructions = await Promise.all(
-        batch.map((pledge) => claimRefundIxs(program, campaign, pledge.backer, payer.publicKey)),
-      );
-      await send(instructions.flat(), payer);
-      refundsLeft -= batch.length;
-      log(campaign, `returned ${batch.length} pledge${batch.length === 1 ? "" : "s"}`);
-    }
-  }
-
-  const feeDue = status !== "failed" && !campaign.feeCollected && fee(campaign) > 0n;
-  if (feeDue) {
-    await send(await collectFeeIxs(program, campaign, treasury, payer.publicKey), payer);
-    log(campaign, `sent the ${usd(fee(campaign))} fee to the treasury`);
-  }
-
-  // While a campaign is being built its creator can take the stream whenever they like; the
-  // keeper only steps in once the amount is final.
-  if (status === "building") return;
-  const owed = creatorClaimable(campaign, now);
-  if (owed > 0n) {
-    await send(await withdrawIxs(program, campaign, payer.publicKey), payer);
-    log(campaign, `sent ${usd(owed)} to the creator`);
-  }
-  if (refundsLeft === 0) finished.add(campaign.address.toBase58());
+  if (status !== "funding" && status !== "building") finished.add(campaign.address.toBase58());
 }
 
 async function main() {

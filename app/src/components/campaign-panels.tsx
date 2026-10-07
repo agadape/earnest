@@ -6,8 +6,10 @@ import type { ReactNode } from "react";
 import { FaucetButton } from "@/components/faucet-button";
 import { Bar, Button, Card } from "@/components/ui";
 import { useConnectDialog } from "@/components/wallet-button";
+import { useAutoSettle } from "@/lib/auto-settle";
 import { useBalance, useProgram } from "@/lib/chain";
 import { firstFew, formatDate, formatDuration, usd } from "@/lib/format";
+import { REFUNDS_PER_TRANSACTION } from "@/lib/settle";
 import {
   BPS_DENOMINATOR,
   bond,
@@ -32,9 +34,6 @@ import {
   withdrawIxs,
 } from "@/lib/tanda-jadi";
 import { useSend } from "@/lib/transactions";
-
-/** Refunds per transaction. Six would still fit in a transaction; five leaves room to spare. */
-const REFUNDS_PER_TRANSACTION = 5;
 
 const REST_AFTER_BRAKE =
   "The rest had already left the vault before the brake: released to the creator, or taken as the service fee.";
@@ -362,6 +361,11 @@ export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: Pane
   const refund = seat === null ? null : refundFor(campaign, seat, now);
   const bonus = refund !== null && refund > campaign.price ? refund - campaign.price : 0n;
 
+  // The server sends refunds and payouts by itself where it can; the buttons are the fallback.
+  const claimable = creatorClaimable(campaign, now);
+  const settle = useAutoSettle(campaign.address, pledges.length > 0 || claimable > 0n);
+  const manual = settle === "unavailable" || settle === "failed";
+
   return (
     <Card>
       <h2 className="text-xl font-semibold tracking-tight">
@@ -392,7 +396,9 @@ export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: Pane
 
       {refund !== null && mine && (
         <div className="mt-5 rounded-xl border border-accent-line bg-accent-soft p-5">
-          <p className="text-sm text-accent-ink">Yours to take back</p>
+          <p className="text-sm text-accent-ink">
+            {manual ? "Yours to take back" : "On its way back to your wallet"}
+          </p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-accent-ink">
             {usd(refund)}
           </p>
@@ -403,22 +409,28 @@ export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: Pane
                 ? `Of the ${usd(campaign.price)} you put in. ${REST_AFTER_BRAKE}`
                 : "Your whole deposit."}
           </p>
-          <Button
-            className="mt-4"
-            busy={busy === "refund"}
-            disabled={busy !== null}
-            onClick={() =>
-              send("refund", {
-                pending: `Returning ${usd(refund)} to your wallet`,
-                done: `${usd(refund)} is back in your wallet.`,
-                build: async (payer) => [
-                  await claimRefundIxs(program, campaign, mine.backer, payer),
-                ],
-              })
-            }
-          >
-            Take back {usd(refund)}
-          </Button>
+          {manual ? (
+            <Button
+              className="mt-4"
+              busy={busy === "refund"}
+              disabled={busy !== null}
+              onClick={() =>
+                send("refund", {
+                  pending: `Returning ${usd(refund)} to your wallet`,
+                  done: `${usd(refund)} is back in your wallet.`,
+                  build: async (payer) => [
+                    await claimRefundIxs(program, campaign, mine.backer, payer),
+                  ],
+                })
+              }
+            >
+              Take back {usd(refund)}
+            </Button>
+          ) : (
+            <p className="mt-4 text-sm leading-6 text-stone-600" aria-live="polite">
+              Nothing to click. It is being sent to your wallet now and will show up in a moment.
+            </p>
+          )}
         </div>
       )}
 
@@ -438,7 +450,14 @@ export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: Pane
         </div>
       )}
 
-      {pledges.length > 0 ? (
+      {pledges.length > 0 && !manual ? (
+        <p className="mt-5 border-t border-stone-200 pt-5 text-sm leading-6 text-stone-600">
+          {pledges.length === 1
+            ? "1 deposit is being returned to its backer."
+            : `${pledges.length} deposits are being returned to their backers.`}{" "}
+          Nobody has to click, and each can only go to its own backer.
+        </p>
+      ) : pledges.length > 0 ? (
         <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-stone-200 pt-5">
           <Button
             variant="secondary"
@@ -483,15 +502,26 @@ export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: Pane
         )
       )}
 
-      <CreatorPayout
-        campaign={campaign}
-        now={now}
-        note={
-          failed
-            ? "This part of the creator's bond was not needed for bonuses."
-            : "This was released to the creator before the brake."
-        }
-      />
+      {manual ? (
+        <CreatorPayout
+          campaign={campaign}
+          now={now}
+          note={
+            failed
+              ? "This part of the creator's bond was not needed for bonuses."
+              : "This was released to the creator before the brake."
+          }
+        />
+      ) : (
+        claimable > 0n && (
+          <p className="mt-5 border-t border-stone-200 pt-5 text-sm leading-6 text-stone-600">
+            {usd(claimable)} is being sent to the creator:{" "}
+            {failed
+              ? "the part of their bond that was not needed for bonuses."
+              : "what was released to them before the brake."}
+          </p>
+        )
+      )}
     </Card>
   );
 }
@@ -501,6 +531,9 @@ export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: Pane
 // ---------------------------------------------------------------------------------------------
 
 export function CompletedPanel({ campaign, mine, now }: PanelProps) {
+  const claimable = creatorClaimable(campaign, now);
+  const settle = useAutoSettle(campaign.address, claimable > 0n);
+  const manual = settle === "unavailable" || settle === "failed";
   const totals: [string, bigint][] = [
     ["Raised", raised(campaign)],
     ["To the creator", upfront(campaign) + streamTotal(campaign)],
@@ -541,7 +574,15 @@ export function CompletedPanel({ campaign, mine, now }: PanelProps) {
         </div>
       )}
 
-      <CreatorPayout campaign={campaign} now={now} />
+      {manual ? (
+        <CreatorPayout campaign={campaign} now={now} />
+      ) : (
+        claimable > 0n && (
+          <p className="mt-5 border-t border-stone-200 pt-5 text-sm leading-6 text-stone-600">
+            {usd(claimable)} is being sent to the creator.
+          </p>
+        )
+      )}
     </Card>
   );
 }

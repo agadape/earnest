@@ -2,7 +2,7 @@
 
 import { getAccount, TokenAccountNotFoundError } from "@solana/spl-token";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { type Connection, SYSVAR_CLOCK_PUBKEY } from "@solana/web3.js";
+import type { Connection } from "@solana/web3.js";
 import {
   createContext,
   type ReactNode,
@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 
+import { clusterTime } from "@/lib/cluster-time";
 import { MINT } from "@/lib/env";
 import { getProgram, type TandaJadiProgram, tokenAccount } from "@/lib/tanda-jadi";
 
@@ -95,20 +96,6 @@ export function usePolled<T>(load: (() => Promise<T>) | null): {
   return state.load === load && load
     ? { data: state.data, error: state.error }
     : { data: undefined, error: undefined };
-}
-
-/** What the program will read as "now": the timestamp of the most recent confirmed block. */
-async function clusterTime(connection: Connection): Promise<number> {
-  try {
-    const time = await connection.getBlockTime(await connection.getSlot("confirmed"));
-    if (time !== null) return time;
-  } catch {
-    // Some nodes cannot answer for the newest slot yet. The clock account below always can.
-  }
-  const clock = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY, "confirmed");
-  if (!clock) throw new Error("the cluster did not report its time");
-  // Layout: slot, epoch start timestamp, epoch, leader schedule epoch, unix timestamp.
-  return Number(clock.data.readBigInt64LE(32));
 }
 
 function useClusterClock(connection: Connection): number | null {

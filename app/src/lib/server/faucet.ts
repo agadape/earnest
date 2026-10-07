@@ -1,8 +1,5 @@
 import "server-only";
 
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import {
   createAssociatedTokenAccountIdempotentInstruction,
   createMintToInstruction,
@@ -11,15 +8,15 @@ import {
   TokenAccountNotFoundError,
 } from "@solana/spl-token";
 import {
-  Connection,
-  Keypair,
+  type Connection,
+  type Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
-  Transaction,
 } from "@solana/web3.js";
 
 import { confirmSignature } from "@/lib/confirm";
+import { IS_LOCAL, loadServerKey, sendAsServer, serverConnection } from "@/lib/server/payer";
 
 const USD = 1_000_000n;
 const DRIP = 100n * USD;
@@ -27,8 +24,6 @@ const DRIP = 100n * USD;
 const BALANCE_CAP = 1_000n * USD;
 const COOLDOWN_MS = 10_000;
 
-const RPC_URL = process.env.RPC_URL ?? process.env.NEXT_PUBLIC_RPC_URL ?? "http://127.0.0.1:8899";
-const IS_LOCAL = /127\.0\.0\.1|localhost/.test(RPC_URL);
 // What a wallet is topped up to, and the level below which that happens.
 const SOL_TARGET = (IS_LOCAL ? 1 : 0.05) * LAMPORTS_PER_SOL;
 const SOL_FLOOR = SOL_TARGET / 5;
@@ -46,29 +41,6 @@ export class FaucetError extends Error {
 
 const lastDrip = new Map<string, number>();
 
-/**
- * The key that may mint the demo token: `FAUCET_SECRET_KEY` (a JSON array, as `solana-keygen`
- * writes it) or else the key the dev scripts keep in `app/.keys/faucet.json`.
- *
- * Errors raised here never include the cause, because a parser's message quotes its input.
- */
-async function loadAuthority(): Promise<Keypair | null> {
-  let source = process.env.FAUCET_SECRET_KEY;
-  if (!source) {
-    const file = path.join(/* turbopackIgnore: true */ process.cwd(), ".keys", "faucet.json");
-    try {
-      source = await fs.readFile(file, "utf8");
-    } catch {
-      return null;
-    }
-  }
-  try {
-    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(source) as number[]));
-  } catch {
-    throw new FaucetError("The faucet's key is not a valid secret key.", 503);
-  }
-}
-
 async function confirmed(connection: Connection, signature: string) {
   const { lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   await confirmSignature(connection, signature, lastValidBlockHeight);
@@ -80,7 +52,12 @@ export async function drip(address: string): Promise<{ signature: string; amount
   if (!mintAddress) {
     throw new FaucetError("No demo token is configured. Run `npm run setup` first.", 503);
   }
-  const authority = await loadAuthority();
+  let authority: Keypair | null;
+  try {
+    authority = await loadServerKey();
+  } catch {
+    throw new FaucetError("The faucet's key is not a valid secret key.", 503);
+  }
   if (!authority) {
     throw new FaucetError("The faucet is not set up on this server.", 503);
   }
@@ -98,7 +75,7 @@ export async function drip(address: string): Promise<{ signature: string; amount
     throw new FaucetError("You were just topped up. Try again in a few seconds.", 429);
   }
 
-  const connection = new Connection(RPC_URL, "confirmed");
+  const connection = serverConnection();
   const mint = new PublicKey(mintAddress);
   const account = getAssociatedTokenAddressSync(mint, recipient, true);
   try {
@@ -153,13 +130,5 @@ async function topUp(
     ),
     createMintToInstruction(mint, account, authority.publicKey, DRIP),
   );
-
-  const latest = await connection.getLatestBlockhash("confirmed");
-  const transaction = new Transaction({ feePayer: authority.publicKey, ...latest }).add(
-    ...instructions,
-  );
-  transaction.sign(authority);
-  const signature = await connection.sendRawTransaction(transaction.serialize());
-  await confirmSignature(connection, signature, latest.lastValidBlockHeight);
-  return signature;
+  return sendAsServer(connection, authority, instructions);
 }
