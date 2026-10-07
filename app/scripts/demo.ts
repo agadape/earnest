@@ -50,9 +50,11 @@ const PAUSE_MS = Number(process.env.PAUSE_MS ?? 1500);
 
 const BACKER_NAMES = ["rina", "sari", "tono", "wati", "yoga"];
 
-// Also the demo token's mint authority, and the wallet that pays for the transactions "anyone"
-// may send: refunds and payouts need no signature from the person receiving them.
+// Pays for the transactions "anyone" may send: refunds and payouts need no signature from the
+// person receiving them.
 const admin = keypair("admin");
+// Mints the demo token.
+const faucet = keypair("faucet");
 const mint = keypair("mint").publicKey;
 const budi = keypair("budi");
 const backers = BACKER_NAMES.map((name) => ({ name, wallet: keypair(name) }));
@@ -86,10 +88,11 @@ async function main() {
   const sol = IS_LOCAL ? 1 : 0.05;
   await ensureSol(admin.publicKey, IS_LOCAL ? 2 : 0.5);
   await ensureSol(budi.publicKey, sol, admin);
-  await ensureTokens(mint, budi.publicKey, 10n * USD, admin);
+  await ensureSol(faucet.publicKey, IS_LOCAL ? 1 : 0.05, admin);
+  await ensureTokens(mint, budi.publicKey, 10n * USD, faucet);
   for (const { wallet } of backers) {
     await ensureSol(wallet.publicKey, sol, admin);
-    await ensureTokens(mint, wallet.publicKey, 20n * USD, admin);
+    await ensureTokens(mint, wallet.publicKey, 20n * USD, faucet);
   }
   const budiStart = await balance(budi);
   const backerStart = await Promise.all(backers.map(({ wallet }) => balance(wallet)));

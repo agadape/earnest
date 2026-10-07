@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { createMint } from "@solana/spl-token";
+import { AuthorityType, createMint, createSetAuthorityInstruction, getMint } from "@solana/spl-token";
 
 import { fetchConfig, initializeConfigIx, PROGRAM_ID } from "../src/lib/tanda-jadi";
 import {
@@ -48,10 +48,29 @@ async function main() {
   // The demo token's address is a keypair of its own so that it stays the same across runs.
   const mintExisted = hasKeypair("mint");
   const mintKeypair = keypair("mint");
+  // Minted by a key of its own, so the key a hosted faucet has to hold can hand out play money
+  // and nothing else. The admin key, which controls the program's config, stays off the server.
+  const faucet = keypair("faucet");
+  await ensureSol(faucet.publicKey, IS_LOCAL ? 1 : 0.2, admin);
   if (!mintExisted || !(await connection.getAccountInfo(mintKeypair.publicKey))) {
-    await createMint(connection, admin, admin.publicKey, null, 6, mintKeypair);
+    await createMint(connection, admin, faucet.publicKey, null, 6, mintKeypair);
     console.log(`Demo token created: ${mintKeypair.publicKey.toBase58()}`);
   } else {
+    const { mintAuthority } = await getMint(connection, mintKeypair.publicKey);
+    if (mintAuthority?.equals(admin.publicKey)) {
+      await send(
+        [
+          createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            admin.publicKey,
+            AuthorityType.MintTokens,
+            faucet.publicKey,
+          ),
+        ],
+        admin,
+      );
+      console.log("Demo token: minting moved from the admin key to the faucet key");
+    }
     console.log(`Demo token exists: ${mintKeypair.publicKey.toBase58()}`);
   }
 

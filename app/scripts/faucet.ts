@@ -15,11 +15,13 @@ async function main() {
 
   const wallet = new PublicKey(address);
   const admin = keypair("admin");
+  const faucet = keypair("faucet");
   const mint = keypair("mint").publicKey;
 
   await ensureSol(wallet, IS_LOCAL ? 1 : 0.05, admin);
   const wanted = (await tokenBalance(mint, wallet)) + BigInt(amount) * USD;
-  await ensureTokens(mint, wallet, wanted, admin);
+  await ensureSol(faucet.publicKey, IS_LOCAL ? 1 : 0.05, admin);
+  await ensureTokens(mint, wallet, wanted, faucet);
 
   console.log(`${wallet.toBase58()} now holds ${usd(await tokenBalance(mint, wallet))}`);
 }

@@ -48,14 +48,14 @@ const lastDrip = new Map<string, number>();
 
 /**
  * The key that may mint the demo token: `FAUCET_SECRET_KEY` (a JSON array, as `solana-keygen`
- * writes it) or else the key the dev scripts keep in `app/.keys/admin.json`.
+ * writes it) or else the key the dev scripts keep in `app/.keys/faucet.json`.
  *
  * Errors raised here never include the cause, because a parser's message quotes its input.
  */
 async function loadAuthority(): Promise<Keypair | null> {
   let source = process.env.FAUCET_SECRET_KEY;
   if (!source) {
-    const file = path.join(/* turbopackIgnore: true */ process.cwd(), ".keys", "admin.json");
+    const file = path.join(/* turbopackIgnore: true */ process.cwd(), ".keys", "faucet.json");
     try {
       source = await fs.readFile(file, "utf8");
     } catch {

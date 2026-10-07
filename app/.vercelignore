@@ -1,0 +1,4 @@
+# Never upload local keys or local environment files with a deployment.
+.keys
+.env*
+!.env.example
