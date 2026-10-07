@@ -90,6 +90,7 @@ npm run setup                  # config + a demo token standing in for USDC, wri
 npm run demo                   # two scripted campaigns: one fills and is braked, one fails
 npm run dev                    # the web app on http://localhost:3000
 npm run faucet -- <address>    # demo dollars for your own wallet
+npm run keeper                 # optional: a bot that returns pledges and sends payouts by itself
 ```
 
 To try the app without a wallet extension, add `NEXT_PUBLIC_DEMO_WALLET=1` to `app/.env.local`.

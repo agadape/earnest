@@ -59,6 +59,10 @@ const backers = BACKER_NAMES.map((name) => ({ name, wallet: keypair(name) }));
 
 let startedAt = 0;
 
+// Payouts can be sent by anyone, so a keeper (`npm run keeper`) may get there first. Then the
+// money has already arrived and there is nothing left for this script to send.
+const alreadySent = () => undefined;
+
 async function log(message: string) {
   const elapsed = (await chainTime()) - startedAt;
   console.log(`[${String(elapsed).padStart(3)}s] ${message}`);
@@ -86,7 +90,8 @@ async function main() {
     await ensureTokens(mint, wallet.publicKey, 20n * USD, admin);
   }
   const budiStart = await balance(budi);
-  const rinaStart = await balance(backers[0].wallet);
+  const backerStart = await Promise.all(backers.map(({ wallet }) => balance(wallet)));
+  const rinaStart = backerStart[0];
 
   startedAt = await chainTime();
   const run = BigInt(Date.now());
@@ -141,7 +146,10 @@ async function main() {
   await log("B: the deadline passed with 3 of 5 seats taken.");
   for (const { name, wallet } of backers.slice(0, 3)) {
     const before = await balance(wallet);
-    await send(await claimRefundIxs(program, campaignB, wallet.publicKey, admin.publicKey), admin);
+    await send(
+      await claimRefundIxs(program, campaignB, wallet.publicKey, admin.publicKey),
+      admin,
+    ).catch(alreadySent);
     await log(`B: ${name} is refunded: ${usd(before)} -> ${usd(await balance(wallet))}`);
   }
   await log(
@@ -163,16 +171,24 @@ async function main() {
     `A: ${braked.status}. The stream stopped; each backer gets ${usd(braked.refundPerBacker)} back.`,
   );
   // Whatever was released between Budi's last withdrawal and the brake is still his.
-  await send(await withdrawIxs(program, campaignA, admin.publicKey), admin).catch(() => undefined);
+  await send(await withdrawIxs(program, campaignA, admin.publicKey), admin).catch(alreadySent);
   for (const { wallet } of backers) {
-    await send(await claimRefundIxs(program, campaignA, wallet.publicKey, admin.publicKey), admin);
+    await send(
+      await claimRefundIxs(program, campaignA, wallet.publicKey, admin.publicKey),
+      admin,
+    ).catch(alreadySent);
   }
-  await send(await collectFeeIxs(program, campaignA, config.treasury, admin.publicKey), admin);
+  await send(
+    await collectFeeIxs(program, campaignA, config.treasury, admin.publicKey),
+    admin,
+  ).catch(alreadySent);
 
   console.log("\nFinal balances");
   console.log(`  budi  ${usd(await balance(budi))}  (started with ${usd(budiStart)})`);
-  for (const { name, wallet } of backers) {
-    console.log(`  ${name.padEnd(5)} ${usd(await balance(wallet))}  (started with $20.00)`);
+  for (const [index, { name, wallet }] of backers.entries()) {
+    console.log(
+      `  ${name.padEnd(5)} ${usd(await balance(wallet))}  (started with ${usd(backerStart[index])})`,
+    );
   }
   console.log(`  fee   ${usd(await tokenBalance(mint, config.treasury))} in the treasury`);
   console.log(

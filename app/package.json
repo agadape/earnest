@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "setup": "tsx scripts/setup.ts",
     "faucet": "tsx scripts/faucet.ts",
-    "demo": "tsx scripts/demo.ts"
+    "demo": "tsx scripts/demo.ts",
+    "keeper": "tsx scripts/keeper.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "^1.2.1",
