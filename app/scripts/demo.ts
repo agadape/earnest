@@ -82,7 +82,7 @@ async function main() {
 
   // Everyone starts from the same, exact balances so the numbers below are easy to follow.
   const sol = IS_LOCAL ? 1 : 0.05;
-  await ensureSol(admin.publicKey, 2);
+  await ensureSol(admin.publicKey, IS_LOCAL ? 2 : 0.5);
   await ensureSol(budi.publicKey, sol, admin);
   await ensureTokens(mint, budi.publicKey, 10n * USD, admin);
   for (const { wallet } of backers) {

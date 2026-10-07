@@ -13,7 +13,16 @@ import path from "node:path";
 import { createMint } from "@solana/spl-token";
 
 import { fetchConfig, initializeConfigIx, PROGRAM_ID } from "../src/lib/tanda-jadi";
-import { connection, ensureSol, hasKeypair, keypair, program, RPC_URL, send } from "./lib";
+import {
+  connection,
+  ensureSol,
+  hasKeypair,
+  IS_LOCAL,
+  keypair,
+  program,
+  RPC_URL,
+  send,
+} from "./lib";
 
 const FEE_BPS = 300;
 
@@ -23,7 +32,8 @@ async function main() {
   }
 
   const admin = keypair("admin");
-  await ensureSol(admin.publicKey, 2);
+  // Off a local validator SOL is scarce, and this script only pays for two small accounts.
+  await ensureSol(admin.publicKey, IS_LOCAL ? 2 : 0.1);
 
   let config = await fetchConfig(program);
   if (!config) {
