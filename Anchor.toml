@@ -1,0 +1,27 @@
+skip_local_validator = true
+
+[toolchain]
+anchor_version = "1.2.1"
+# Anchor 1.2 is built against Solana 3.x. Newer CLIs compile to SBPF v3 by default, which the
+# test VM (LiteSVM 0.10) does not load.
+solana_version = "3.1.10"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+tanda_jadi = "EsMmNdHM99LX3c3yhec5AgdteXBPyCz5kN8St3ySddzv"
+
+[programs.devnet]
+tanda_jadi = "EsMmNdHM99LX3c3yhec5AgdteXBPyCz5kN8St3ySddzv"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test"
+
+[hooks]
+post_build = "bash scripts/sync-idl.sh"

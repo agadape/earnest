@@ -1,0 +1,2 @@
+# Shell scripts and the Makefile run inside Linux (WSL), where CRLF line endings break them.
+* text=auto eol=lf
