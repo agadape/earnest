@@ -7,6 +7,10 @@
 //!   from the creator's bond.
 //! - Target reached: a share goes to the creator at once, the rest is released linearly over the
 //!   build period, and a majority of backers can brake that stream and take back what is left.
+//!
+//! While the outcome is open a backer can sell their seat to someone else. The seat keeps its
+//! place in the queue, so what a bonus seat sells for says how likely its holders think a
+//! failure is.
 
 pub mod constants;
 pub mod error;
@@ -60,5 +64,17 @@ pub mod tanda_jadi {
 
     pub fn set_brake(ctx: Context<SetBrake>, on: bool) -> Result<()> {
         crate::instructions::set_brake::handle_set_brake(ctx, on)
+    }
+
+    pub fn list_seat(ctx: Context<ListSeat>, ask: u64) -> Result<()> {
+        crate::instructions::list_seat::handle_list_seat(ctx, ask)
+    }
+
+    pub fn unlist_seat(ctx: Context<UnlistSeat>) -> Result<()> {
+        crate::instructions::unlist_seat::handle_unlist_seat(ctx)
+    }
+
+    pub fn buy_seat(ctx: Context<BuySeat>, max_price: u64) -> Result<()> {
+        crate::instructions::buy_seat::handle_buy_seat(ctx, max_price)
     }
 }

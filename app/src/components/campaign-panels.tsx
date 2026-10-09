@@ -4,6 +4,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import type { ReactNode } from "react";
 
 import { FaucetButton } from "@/components/faucet-button";
+import { SeatMarket } from "@/components/seat-market";
 import { Bar, Button, Card } from "@/components/ui";
 import { useConnectDialog } from "@/components/wallet-button";
 import { useAutoSettle } from "@/lib/auto-settle";
@@ -46,6 +47,10 @@ export interface PanelProps {
   mine: Pledge | null;
   /** The seat this wallet held before its pledge was refunded, as this browser remembers it. */
   refundedSeat: number | null;
+  /** What this wallet sold its seat for, if this browser saw that happen. */
+  soldFor: bigint | null;
+  /** What this wallet paid another backer for its seat, if it bought it in this browser. */
+  boughtFor: bigint | null;
   now: number;
 }
 
@@ -59,7 +64,17 @@ function Lead({ children }: { children: ReactNode }) {
 // Taking pledges
 // ---------------------------------------------------------------------------------------------
 
-export function FundingPanel({ campaign, mine, now }: PanelProps) {
+export function FundingPanel(props: PanelProps) {
+  const { campaign, pledges, mine, now } = props;
+  return (
+    <>
+      <FundingCard {...props} />
+      <SeatMarket campaign={campaign} pledges={pledges} mine={mine} now={now} />
+    </>
+  );
+}
+
+function FundingCard({ campaign, mine, now }: PanelProps) {
   const seat = mine?.index ?? campaign.backers;
   const refund = refundIfFailed(campaign, seat);
   const hasBonus = refund > campaign.price;
@@ -200,7 +215,7 @@ function PledgeAction({ campaign }: { campaign: Campaign }) {
 // Being built
 // ---------------------------------------------------------------------------------------------
 
-export function BuildingPanel({ campaign, mine, now }: PanelProps) {
+export function BuildingPanel({ campaign, pledges, mine, now }: PanelProps) {
   const program = useProgram();
   const { send, busy } = useSend();
 
@@ -302,6 +317,8 @@ export function BuildingPanel({ campaign, mine, now }: PanelProps) {
           )}
         </div>
       </Card>
+
+      <SeatMarket campaign={campaign} pledges={pledges} mine={mine} now={now} />
     </>
   );
 }
@@ -350,7 +367,15 @@ function CreatorPayout({
 // Failed or braked: money goes back
 // ---------------------------------------------------------------------------------------------
 
-export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: PanelProps) {
+export function RefundPanel({
+  campaign,
+  pledges,
+  mine,
+  refundedSeat,
+  soldFor,
+  boughtFor,
+  now,
+}: PanelProps) {
   const { publicKey } = useWallet();
   const program = useProgram();
   const { send, busy } = useSend();
@@ -438,14 +463,32 @@ export function RefundPanel({ campaign, pledges, mine, refundedSeat, now }: Pane
         <div className="mt-5 rounded-xl border border-accent-line bg-accent-soft p-5">
           <p className="text-sm text-accent-ink">Returned to your wallet</p>
           <p className="mt-1 text-2xl font-semibold leading-tight tracking-tight text-accent-ink sm:text-3xl">
-            You put in {usd(campaign.price)}. You got back {usd(refund)}.
+            {boughtFor !== null
+              ? `You paid ${usd(boughtFor)} for this seat. It paid back ${usd(refund)}.`
+              : `You put in ${usd(campaign.price)}. You got back ${usd(refund)}.`}
           </p>
           <p className="mt-2 text-sm leading-6 text-stone-700">
-            {bonus > 0n
-              ? `The extra ${usd(bonus)} is your bonus for joining early. It came out of the creator's bond.`
-              : refund < campaign.price
-                ? REST_AFTER_BRAKE
-                : "That is your whole deposit."}
+            {boughtFor !== null
+              ? bonus > 0n
+                ? `You bought it from another backer. It paid back its ${usd(campaign.price)} deposit plus the ${usd(bonus)} bonus that came with its place in line, out of the creator's bond.`
+                : "You bought it from another backer. What it paid back is what was left for each seat."
+              : bonus > 0n
+                ? `The extra ${usd(bonus)} is your bonus for joining early. It came out of the creator's bond.`
+                : refund < campaign.price
+                  ? REST_AFTER_BRAKE
+                  : "That is your whole deposit."}
+          </p>
+        </div>
+      )}
+
+      {soldFor !== null && !mine && (
+        <div className="mt-5 rounded-xl border border-stone-200 p-5">
+          <p className="text-sm text-stone-500">You sold your seat</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight">
+            You put in {usd(campaign.price)}. You sold for {usd(soldFor)}.
+          </p>
+          <p className="mt-2 text-sm leading-6 text-stone-700">
+            The seat was someone else&apos;s when this ended, so what it paid back went to them.
           </p>
         </div>
       )}

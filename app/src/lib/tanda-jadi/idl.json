@@ -8,6 +8,147 @@
   },
   "instructions": [
     {
+      "name": "buy_seat",
+      "discriminator": [
+        225,
+        111,
+        238,
+        154,
+        123,
+        74,
+        43,
+        234
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "campaign",
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "campaign"
+          ]
+        },
+        {
+          "name": "seller",
+          "writable": true
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "seller_pledge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  101,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyer_pledge",
+          "docs": [
+            "One seat per wallet still holds: a buyer who already has a seat cannot take a second."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  101,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyer_token",
+          "writable": true
+        },
+        {
+          "name": "seller_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "claim_refund",
       "discriminator": [
         15,
@@ -547,6 +688,97 @@
       ]
     },
     {
+      "name": "list_seat",
+      "discriminator": [
+        41,
+        47,
+        158,
+        199,
+        18,
+        5,
+        102,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "campaign",
+          "writable": true
+        },
+        {
+          "name": "pledge",
+          "docs": [
+            "Proof that the seller holds a seat. It is not changed: the seat stays theirs until sold."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  101,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "ask",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "pledge",
       "discriminator": [
         235,
@@ -770,6 +1002,59 @@
       ]
     },
     {
+      "name": "unlist_seat",
+      "discriminator": [
+        152,
+        141,
+        20,
+        195,
+        200,
+        223,
+        53,
+        168
+      ],
+      "accounts": [
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "listing"
+          ]
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing.campaign",
+                "account": "Listing"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "update_config",
       "discriminator": [
         29,
@@ -973,6 +1258,19 @@
       ]
     },
     {
+      "name": "Listing",
+      "discriminator": [
+        218,
+        32,
+        50,
+        73,
+        43,
+        134,
+        26,
+        58
+      ]
+    },
+    {
       "name": "Pledge",
       "discriminator": [
         161,
@@ -1071,6 +1369,21 @@
       "code": 6016,
       "name": "FeeAlreadyCollected",
       "msg": "Fee was already collected"
+    },
+    {
+      "code": 6017,
+      "name": "NotTradable",
+      "msg": "Seats can only change hands before the deadline or while the campaign is being built"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidAsk",
+      "msg": "The asking price must be greater than zero"
+    },
+    {
+      "code": 6019,
+      "name": "AskTooHigh",
+      "msg": "The seat now costs more than the buyer agreed to pay"
     }
   ],
   "types": [
@@ -1259,6 +1572,34 @@
       }
     },
     {
+      "name": "Listing",
+      "docs": [
+        "A seat offered for sale by its holder. It is only an offer: the seat stays with the seller,",
+        "who can take the offer down at any time, until someone pays the asking price."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "campaign",
+            "type": "pubkey"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "ask",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "Pledge",
       "type": {
         "kind": "struct",
@@ -1269,12 +1610,15 @@
           },
           {
             "name": "backer",
+            "docs": [
+              "Whoever holds the seat now: the wallet that pledged, or one that bought the seat since."
+            ],
             "type": "pubkey"
           },
           {
             "name": "index",
             "docs": [
-              "Position in the queue, starting at zero."
+              "Position in the queue, starting at zero. It stays with the seat when the seat is sold."
             ],
             "type": "u32"
           },
@@ -1323,6 +1667,11 @@
       "name": "CONFIG_SEED",
       "type": "bytes",
       "value": "[99, 111, 110, 102, 105, 103]"
+    },
+    {
+      "name": "LISTING_SEED",
+      "type": "bytes",
+      "value": "[108, 105, 115, 116, 105, 110, 103]"
     },
     {
       "name": "PLEDGE_SEED",

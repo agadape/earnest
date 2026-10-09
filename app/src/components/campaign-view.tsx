@@ -13,6 +13,7 @@ import {
   type PanelProps,
   RefundPanel,
 } from "@/components/campaign-panels";
+import { Share } from "@/components/share";
 import { Bar, Card, Notice, StatusBadge, Tag } from "@/components/ui";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
@@ -25,11 +26,13 @@ import {
   usd,
 } from "@/lib/format";
 import { rememberPledge, useReceipt } from "@/lib/receipts";
+import { sentence } from "@/lib/summary";
 import {
   bond,
   buildEnd,
   type Campaign,
   fetchCampaign,
+  fetchListing,
   fetchPledge,
   fetchPledges,
   type Pledge,
@@ -155,21 +158,58 @@ function Loaded({
       ? own
       : ((viewer && pledges.find((pledge) => pledge.backer.equals(viewer))) ?? null);
 
-  // Written down while the pledge exists, because a refund removes it from the chain.
+  // Written down while the pledge exists, because a refund or a sale removes it from the chain.
   const receipt = useReceipt(address, wallet);
   const mySeat = mine?.index;
+  const stale = receipt?.index !== mySeat || receipt?.soldFor !== undefined;
   useEffect(() => {
-    if (wallet && mySeat !== undefined) rememberPledge(address, wallet, { index: mySeat });
-  }, [address, wallet, mySeat]);
+    if (wallet && mySeat !== undefined && stale) rememberPledge(address, wallet, { index: mySeat });
+  }, [address, wallet, mySeat, stale]);
+
+  // A pledge that is gone was either refunded or sold. If this wallet had its seat on offer, the
+  // offer tells them apart: buying a seat removes its offer, a refund leaves it standing.
+  const program = useProgram();
+  const offeredFor = own === null && !receipt?.soldFor ? receipt?.offeredFor : undefined;
+  const loadOffer = useMemo(
+    () =>
+      viewer && offeredFor !== undefined
+        ? () => fetchListing(program, campaign.address, viewer)
+        : null,
+    // The addresses as text: new PublicKey objects for the same accounts must not restart the poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [program, address, wallet, offeredFor],
+  );
+  const { data: offer } = usePolled(loadOffer);
+  useEffect(() => {
+    if (wallet && receipt && offeredFor !== undefined && offer === null) {
+      rememberPledge(address, wallet, {
+        index: receipt.index,
+        boughtFor: receipt.boughtFor,
+        soldFor: offeredFor,
+      });
+    }
+  }, [address, wallet, receipt, offeredFor, offer]);
+
+  const soldFor = own === null && receipt?.soldFor ? BigInt(receipt.soldFor) : null;
+  // Until an offered seat is known to be still on offer, it may have been sold: claim nothing.
+  const undecided = offeredFor !== undefined && !offer;
   const refundedSeat =
     own === null &&
     receipt &&
+    soldFor === null &&
+    !undecided &&
     receipt.index < campaign.backers &&
     (status === "failed" || status === "braked")
       ? receipt.index
       : null;
 
-  const panel: PanelProps = { campaign, pledges, mine, refundedSeat, now };
+  // Only while the note is about the seat in question: the one held now, or the one refunded.
+  const boughtFor =
+    receipt?.boughtFor && !receipt.soldFor && (mine ? mine.index === receipt.index : true)
+      ? BigInt(receipt.boughtFor)
+      : null;
+
+  const panel: PanelProps = { campaign, pledges, mine, refundedSeat, soldFor, boughtFor, now };
 
   return (
     <div className="space-y-8">
@@ -225,7 +265,10 @@ function Loaded({
             now={now}
           />
         </div>
-        <Terms campaign={campaign} />
+        <div className="space-y-6">
+          <Terms campaign={campaign} />
+          <Share address={address} text={sentence(campaign, status)} />
+        </div>
       </div>
     </div>
   );

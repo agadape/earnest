@@ -57,6 +57,13 @@ export function pledgeAddress(campaign: PublicKey, backer: PublicKey): PublicKey
   )[0];
 }
 
+export function listingAddress(campaign: PublicKey, seller: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("listing"), campaign.toBuffer(), seller.toBuffer()],
+    PROGRAM_ID,
+  )[0];
+}
+
 /** The token account of `owner`. For a campaign address this is its vault. */
 export function tokenAccount(mint: PublicKey, owner: PublicKey): PublicKey {
   return getAssociatedTokenAddressSync(mint, owner, true);
@@ -103,6 +110,14 @@ export interface Pledge {
   /** Position in the queue, starting at zero. Positions below `earlySlots` carry the bonus. */
   index: number;
   braked: boolean;
+}
+
+/** A seat its holder offers for sale. The seat stays theirs until someone pays the price. */
+export interface Listing {
+  address: PublicKey;
+  campaign: PublicKey;
+  seller: PublicKey;
+  ask: bigint;
 }
 
 export interface Config {
@@ -194,6 +209,39 @@ export async function fetchPledges(
     .sort((a, b) => a.index - b.index);
 }
 
+/** The offer `seller` has standing for their seat, or `null`. Buying a seat removes its offer. */
+export async function fetchListing(
+  program: TandaJadiProgram,
+  campaign: PublicKey,
+  seller: PublicKey,
+): Promise<Listing | null> {
+  const address = listingAddress(campaign, seller);
+  const raw = await program.account.listing.fetchNullable(address);
+  return raw && { address, campaign: raw.campaign, seller: raw.seller, ask: big(raw.ask) };
+}
+
+/**
+ * Every offer made for a seat of this campaign, cheapest first. An offer can outlive its seat
+ * (the seat was refunded, the offer never taken down), so match these against `fetchPledges`
+ * before showing them as buyable.
+ */
+export async function fetchListings(
+  program: TandaJadiProgram,
+  campaign: PublicKey,
+): Promise<Listing[]> {
+  const all = await program.account.listing.all([
+    { memcmp: { offset: 8, bytes: campaign.toBase58() } },
+  ]);
+  return all
+    .map(({ publicKey, account }) => ({
+      address: publicKey,
+      campaign: account.campaign,
+      seller: account.seller,
+      ask: big(account.ask),
+    }))
+    .sort((a, b) => (a.ask < b.ask ? -1 : a.ask > b.ask ? 1 : 0));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Money
 // ---------------------------------------------------------------------------------------------
@@ -265,6 +313,27 @@ export function refundIfBrakedAt(c: Campaign, now: number): bigint {
   if (c.backers === 0) return 0n;
   const pool = streamTotal(c) - vestedAt(c, now) + bond(c);
   return min(pool / BigInt(c.backers), c.price);
+}
+
+/** Seats change hands only while the outcome is open: before the deadline or during the build. */
+export function seatsTradable(c: Campaign, now: number): boolean {
+  const status = statusAt(c, now);
+  return status === "funding" || status === "building";
+}
+
+/**
+ * What an asking price for a bonus seat says about the campaign's chances, as a share between 0
+ * and 1, or `null` when it says nothing.
+ *
+ * A bonus seat pays `price + bonus` if the campaign fails and is worth `price` to someone who
+ * wants the product. Letting it go for `price + x` only makes sense to a holder who thinks a
+ * failure is about `x / bonus` likely, or less. It is one holder's firm offer, not a measurement.
+ */
+export function impliedFailureChance(c: Campaign, bonusSeatAsk: bigint): number | null {
+  if (c.bonusPerEarly === 0n) return null;
+  const premium = bonusSeatAsk - c.price;
+  if (premium < 0n || premium > c.bonusPerEarly) return null;
+  return Number(premium) / Number(c.bonusPerEarly);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -415,6 +484,61 @@ export function setBrakeIx(
   on: boolean,
 ): Promise<TransactionInstruction> {
   return program.methods.setBrake(on).accountsPartial({ backer, campaign }).instruction();
+}
+
+/** Offers the seller's seat at a fixed price. To change the price, unlist and list again. */
+export function listSeatIx(
+  program: TandaJadiProgram,
+  campaign: PublicKey,
+  seller: PublicKey,
+  ask: bigint,
+): Promise<TransactionInstruction> {
+  return program.methods.listSeat(bn(ask)).accountsPartial({ seller, campaign }).instruction();
+}
+
+/** Takes the seller's offer down. Allowed at any time, also after the campaign ended. */
+export function unlistSeatIx(
+  program: TandaJadiProgram,
+  campaign: PublicKey,
+  seller: PublicKey,
+): Promise<TransactionInstruction> {
+  return program.methods
+    .unlistSeat()
+    .accountsPartial({ seller, listing: listingAddress(campaign, seller) })
+    .instruction();
+}
+
+/**
+ * Buys the seat on offer for exactly the price the buyer saw: if the seller swapped in a dearer
+ * offer in the meantime, the purchase fails instead of costing more. The first instruction
+ * recreates the seller's token account if they closed it, so they can always be paid.
+ */
+export async function buySeatIxs(
+  program: TandaJadiProgram,
+  campaign: Pick<Campaign, "address" | "mint">,
+  listing: Pick<Listing, "seller" | "ask">,
+  buyer: PublicKey,
+): Promise<TransactionInstruction[]> {
+  const sellerToken = tokenAccount(campaign.mint, listing.seller);
+  return [
+    createAssociatedTokenAccountIdempotentInstruction(
+      buyer,
+      sellerToken,
+      listing.seller,
+      campaign.mint,
+    ),
+    await program.methods
+      .buySeat(bn(listing.ask))
+      .accountsPartial({
+        buyer,
+        campaign: campaign.address,
+        mint: campaign.mint,
+        seller: listing.seller,
+        buyerToken: tokenAccount(campaign.mint, buyer),
+        sellerToken,
+      })
+      .instruction(),
+  ];
 }
 
 // ---------------------------------------------------------------------------------------------

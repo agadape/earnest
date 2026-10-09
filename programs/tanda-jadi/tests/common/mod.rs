@@ -425,3 +425,94 @@ impl World {
         self.send(instruction, &[backer])
     }
 }
+
+pub fn listing_address(campaign: &Pubkey, seller: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            tanda_jadi::constants::LISTING_SEED,
+            campaign.as_ref(),
+            seller.as_ref(),
+        ],
+        &tanda_jadi::id(),
+    )
+    .0
+}
+
+/// The seat market.
+impl World {
+    pub fn pledge_of(&self, campaign: &Pubkey, holder: &Pubkey) -> tanda_jadi::state::Pledge {
+        let account = self
+            .svm
+            .get_account(&pledge_address(campaign, holder))
+            .unwrap();
+        tanda_jadi::state::Pledge::try_deserialize(&mut account.data.as_slice()).unwrap()
+    }
+
+    pub fn list_seat(
+        &mut self,
+        campaign: &Pubkey,
+        seller: &Keypair,
+        ask: u64,
+    ) -> Result<(), String> {
+        let instruction = Instruction::new_with_bytes(
+            tanda_jadi::id(),
+            &tanda_jadi::instruction::ListSeat { ask }.data(),
+            tanda_jadi::accounts::ListSeat {
+                seller: seller.pubkey(),
+                campaign: *campaign,
+                pledge: pledge_address(campaign, &seller.pubkey()),
+                listing: listing_address(campaign, &seller.pubkey()),
+                system_program: system_program::ID,
+            }
+            .to_account_metas(None),
+        );
+        self.send(instruction, &[seller])
+    }
+
+    pub fn unlist_seat(&mut self, campaign: &Pubkey, seller: &Keypair) -> Result<(), String> {
+        let listing = listing_address(campaign, &seller.pubkey());
+        self.unlist(&listing, seller)
+    }
+
+    /// Takes down `listing` with `signer` named as its seller, whoever really made it.
+    pub fn unlist(&mut self, listing: &Pubkey, signer: &Keypair) -> Result<(), String> {
+        let instruction = Instruction::new_with_bytes(
+            tanda_jadi::id(),
+            &tanda_jadi::instruction::UnlistSeat {}.data(),
+            tanda_jadi::accounts::UnlistSeat {
+                seller: signer.pubkey(),
+                listing: *listing,
+            }
+            .to_account_metas(None),
+        );
+        self.send(instruction, &[signer])
+    }
+
+    pub fn buy_seat(
+        &mut self,
+        campaign: &Pubkey,
+        seller: &Pubkey,
+        buyer: &Keypair,
+        max_price: u64,
+    ) -> Result<(), String> {
+        let instruction = Instruction::new_with_bytes(
+            tanda_jadi::id(),
+            &tanda_jadi::instruction::BuySeat { max_price }.data(),
+            tanda_jadi::accounts::BuySeat {
+                buyer: buyer.pubkey(),
+                campaign: *campaign,
+                mint: self.mint,
+                seller: *seller,
+                listing: listing_address(campaign, seller),
+                seller_pledge: pledge_address(campaign, seller),
+                buyer_pledge: pledge_address(campaign, &buyer.pubkey()),
+                buyer_token: self.token_account(&buyer.pubkey()),
+                seller_token: self.token_account(seller),
+                token_program: token::ID,
+                system_program: system_program::ID,
+            }
+            .to_account_metas(None),
+        );
+        self.send(instruction, &[buyer])
+    }
+}

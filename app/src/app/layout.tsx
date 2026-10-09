@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { Footer, Header } from "@/components/header";
-import { Providers } from "@/components/providers";
+import { SITE_URL } from "@/lib/server/site";
 
 import "./globals.css";
 
@@ -17,12 +16,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: SITE_URL,
   title: {
     default: "Tanda Jadi: pre-orders that pay you back",
     template: "%s · Tanda Jadi",
   },
   description:
     "Put down a deposit before it's built. If too few people join, you get it back plus a bonus.",
+  // Title, description and picture are filled in from the page's own and from the
+  // `opengraph-image` next to it. A page that sets `openGraph` replaces all of this.
+  openGraph: { siteName: "Tanda Jadi", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {
@@ -30,21 +34,15 @@ export const viewport: Viewport = {
   themeColor: "#f8f7f4",
 };
 
+// Only what every page shares. The header, footer and wallet live in `(site)/layout.tsx`, so
+// the card under `(embed)` can do without them.
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
-        <Providers>
-          <Header />
-          <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
-            {children}
-          </main>
-          <Footer />
-        </Providers>
-      </body>
+      <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );
 }

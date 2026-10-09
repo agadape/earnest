@@ -9,6 +9,9 @@ pub const CAMPAIGN_SEED: &[u8] = b"campaign";
 #[constant]
 pub const PLEDGE_SEED: &[u8] = b"pledge";
 
+#[constant]
+pub const LISTING_SEED: &[u8] = b"listing";
+
 pub const BPS_DENOMINATOR: u64 = 10_000;
 
 /// Ceiling for the service fee, taken only from campaigns that reach their target.

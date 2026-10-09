@@ -355,3 +355,141 @@ fn a_fee_change_leaves_running_campaigns_alone() {
     world.collect_fee(&first).unwrap();
     assert_eq!(world.balance(&world.treasury), 1_500_000);
 }
+
+#[test]
+fn a_seat_can_be_sold_and_takes_its_bonus_along() {
+    let mut world = World::new();
+    let budi = world.wallet(BOND);
+    let campaign = world.create_campaign(&budi, terms()).unwrap();
+    let backers = world.backers(&campaign, 3);
+    let rina = &backers[0];
+
+    // Rina holds the first bonus seat and offers it for $11.50.
+    world.list_seat(&campaign, rina, 11_500_000).unwrap();
+    let dewi = world.wallet(11_500_000);
+    world
+        .buy_seat(&campaign, &rina.pubkey(), &dewi, 11_500_000)
+        .unwrap();
+
+    assert_eq!(world.balance(&rina.pubkey()), 11_500_000);
+    assert_eq!(world.balance(&dewi.pubkey()), 0);
+    assert!(!world.exists(&pledge_address(&campaign, &rina.pubkey())));
+    assert!(!world.exists(&listing_address(&campaign, &rina.pubkey())));
+    assert_eq!(world.pledge_of(&campaign, &dewi.pubkey()).index, 0);
+    // The vault and the head count are untouched: the campaign did not lose a backer.
+    assert_eq!(world.campaign(&campaign).backers, 3);
+    assert_eq!(world.balance(&campaign), BOND + 30 * USD);
+
+    // The bonus follows the seat, not the wallet that first took it.
+    world.wait(7 * DAY);
+    world.claim_refund(&campaign, &dewi.pubkey()).unwrap();
+    assert_eq!(world.balance(&dewi.pubkey()), 12_500_000);
+    assert_custom_error(world.claim_refund(&campaign, &rina.pubkey()), 3012);
+}
+
+#[test]
+fn a_seat_sale_cannot_be_forced_or_gamed() {
+    let mut world = World::new();
+    let budi = world.wallet(BOND);
+    let campaign = world.create_campaign(&budi, terms()).unwrap();
+    let backers = world.backers(&campaign, 2);
+    let (rina, sari) = (&backers[0], &backers[1]);
+    let mallory = world.wallet(50 * USD);
+
+    // Only a seat holder can offer a seat (AccountNotInitialized), and not for nothing.
+    assert_custom_error(world.list_seat(&campaign, &mallory, 5 * USD), 3012);
+    assert_rejected(
+        world.list_seat(&campaign, rina, 0),
+        TandaJadiError::InvalidAsk,
+    );
+    // A seat that is not on offer cannot be bought.
+    assert_custom_error(
+        world.buy_seat(&campaign, &rina.pubkey(), &mallory, 50 * USD),
+        3012,
+    );
+
+    world.list_seat(&campaign, rina, 12 * USD).unwrap();
+    // One offer per seat. The system program refuses to create the account twice.
+    assert_custom_error(world.list_seat(&campaign, rina, 13 * USD), 0);
+
+    // The buyer names the most they will pay, so a seller cannot raise the price under them.
+    assert_rejected(
+        world.buy_seat(&campaign, &rina.pubkey(), &mallory, 12 * USD - 1),
+        TandaJadiError::AskTooHigh,
+    );
+    // One seat per wallet still holds: Sari cannot add Rina's seat to her own.
+    assert_custom_error(world.buy_seat(&campaign, &rina.pubkey(), sari, 12 * USD), 0);
+
+    // Nobody but the seller can take an offer down (ConstraintHasOne or ConstraintSeeds).
+    let listing = listing_address(&campaign, &rina.pubkey());
+    let refused = world.unlist(&listing, &mallory).unwrap_err();
+    assert!(
+        refused.contains("Custom(2001)") || refused.contains("Custom(2006)"),
+        "{refused}"
+    );
+    // The seller can, and then the seat cannot be bought any more.
+    world.unlist_seat(&campaign, rina).unwrap();
+    assert_custom_error(
+        world.buy_seat(&campaign, &rina.pubkey(), &mallory, 50 * USD),
+        3012,
+    );
+
+    // Once the deadline has passed a seat is a refund claim, and stays where it is.
+    world.list_seat(&campaign, rina, 12 * USD).unwrap();
+    world.wait(7 * DAY);
+    assert_rejected(
+        world.buy_seat(&campaign, &rina.pubkey(), &mallory, 12 * USD),
+        TandaJadiError::NotTradable,
+    );
+    assert_rejected(
+        world.list_seat(&campaign, sari, 12 * USD),
+        TandaJadiError::NotTradable,
+    );
+    // The leftover offer can still be taken down, and the refund is unaffected by it.
+    world.unlist_seat(&campaign, rina).unwrap();
+    world.claim_refund(&campaign, &rina.pubkey()).unwrap();
+    assert_eq!(world.balance(&rina.pubkey()), 12_500_000);
+    assert_eq!(world.balance(&mallory.pubkey()), 50 * USD);
+}
+
+#[test]
+fn a_seat_sold_during_the_build_arrives_with_its_brake_released() {
+    let mut world = World::new();
+    let budi = world.wallet(BOND);
+    let campaign = world.create_campaign(&budi, terms()).unwrap();
+    let backers = world.backers(&campaign, 5);
+    world.wait(DAY);
+
+    world.set_brake(&campaign, &backers[0], true).unwrap();
+    world.set_brake(&campaign, &backers[1], true).unwrap();
+    assert_eq!(world.campaign(&campaign).brakes, 2);
+
+    // A full campaign has no seats left, so a latecomer buys from a holder, here above the price.
+    world.list_seat(&campaign, &backers[0], 14 * USD).unwrap();
+    let dewi = world.wallet(14 * USD);
+    world
+        .buy_seat(&campaign, &backers[0].pubkey(), &dewi, 14 * USD)
+        .unwrap();
+    assert_eq!(world.balance(&backers[0].pubkey()), 14 * USD);
+
+    let state = world.campaign(&campaign);
+    assert_eq!(
+        (state.brakes, state.backers, state.status),
+        (1, 5, Status::Building)
+    );
+    assert!(!world.pledge_of(&campaign, &dewi.pubkey()).braked);
+    // The seller has no say any more.
+    assert_custom_error(world.set_brake(&campaign, &backers[0], true), 3012);
+
+    // The new holder decides for themselves, and their brake counts once.
+    world.set_brake(&campaign, &dewi, true).unwrap();
+    assert_eq!(world.campaign(&campaign).status, Status::Building);
+    world.set_brake(&campaign, &backers[2], true).unwrap();
+    assert_eq!(world.campaign(&campaign).status, Status::Braked);
+
+    // Refunds go to whoever holds the seat now.
+    let refund = world.campaign(&campaign).refund_per_backer;
+    world.claim_refund(&campaign, &dewi.pubkey()).unwrap();
+    assert_eq!(world.balance(&dewi.pubkey()), refund);
+    assert_custom_error(world.claim_refund(&campaign, &backers[0].pubkey()), 3012);
+}

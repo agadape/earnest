@@ -36,4 +36,10 @@ pub enum TandaJadiError {
     FeeNotDue,
     #[msg("Fee was already collected")]
     FeeAlreadyCollected,
+    #[msg("Seats can only change hands before the deadline or while the campaign is being built")]
+    NotTradable,
+    #[msg("The asking price must be greater than zero")]
+    InvalidAsk,
+    #[msg("The seat now costs more than the buyer agreed to pay")]
+    AskTooHigh,
 }

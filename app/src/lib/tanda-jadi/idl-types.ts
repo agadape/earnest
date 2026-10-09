@@ -14,6 +14,147 @@ export type TandaJadi = {
   },
   "instructions": [
     {
+      "name": "buySeat",
+      "discriminator": [
+        225,
+        111,
+        238,
+        154,
+        123,
+        74,
+        43,
+        234
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "campaign",
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "campaign"
+          ]
+        },
+        {
+          "name": "seller",
+          "writable": true
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "sellerPledge",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  101,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyerPledge",
+          "docs": [
+            "One seat per wallet still holds: a buyer who already has a seat cannot take a second."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  101,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyerToken",
+          "writable": true
+        },
+        {
+          "name": "sellerToken",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "maxPrice",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "claimRefund",
       "discriminator": [
         15,
@@ -553,6 +694,97 @@ export type TandaJadi = {
       ]
     },
     {
+      "name": "listSeat",
+      "discriminator": [
+        41,
+        47,
+        158,
+        199,
+        18,
+        5,
+        102,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "campaign",
+          "writable": true
+        },
+        {
+          "name": "pledge",
+          "docs": [
+            "Proof that the seller holds a seat. It is not changed: the seat stays theirs until sold."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  101,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "ask",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "pledge",
       "discriminator": [
         235,
@@ -776,6 +1008,59 @@ export type TandaJadi = {
       ]
     },
     {
+      "name": "unlistSeat",
+      "discriminator": [
+        152,
+        141,
+        20,
+        195,
+        200,
+        223,
+        53,
+        168
+      ],
+      "accounts": [
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "listing"
+          ]
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing.campaign",
+                "account": "listing"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "updateConfig",
       "discriminator": [
         29,
@@ -979,6 +1264,19 @@ export type TandaJadi = {
       ]
     },
     {
+      "name": "listing",
+      "discriminator": [
+        218,
+        32,
+        50,
+        73,
+        43,
+        134,
+        26,
+        58
+      ]
+    },
+    {
       "name": "pledge",
       "discriminator": [
         161,
@@ -1077,6 +1375,21 @@ export type TandaJadi = {
       "code": 6016,
       "name": "feeAlreadyCollected",
       "msg": "Fee was already collected"
+    },
+    {
+      "code": 6017,
+      "name": "notTradable",
+      "msg": "Seats can only change hands before the deadline or while the campaign is being built"
+    },
+    {
+      "code": 6018,
+      "name": "invalidAsk",
+      "msg": "The asking price must be greater than zero"
+    },
+    {
+      "code": 6019,
+      "name": "askTooHigh",
+      "msg": "The seat now costs more than the buyer agreed to pay"
     }
   ],
   "types": [
@@ -1265,6 +1578,34 @@ export type TandaJadi = {
       }
     },
     {
+      "name": "listing",
+      "docs": [
+        "A seat offered for sale by its holder. It is only an offer: the seat stays with the seller,",
+        "who can take the offer down at any time, until someone pays the asking price."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "campaign",
+            "type": "pubkey"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "ask",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "pledge",
       "type": {
         "kind": "struct",
@@ -1275,12 +1616,15 @@ export type TandaJadi = {
           },
           {
             "name": "backer",
+            "docs": [
+              "Whoever holds the seat now: the wallet that pledged, or one that bought the seat since."
+            ],
             "type": "pubkey"
           },
           {
             "name": "index",
             "docs": [
-              "Position in the queue, starting at zero."
+              "Position in the queue, starting at zero. It stays with the seat when the seat is sold."
             ],
             "type": "u32"
           },
@@ -1329,6 +1673,11 @@ export type TandaJadi = {
       "name": "configSeed",
       "type": "bytes",
       "value": "[99, 111, 110, 102, 105, 103]"
+    },
+    {
+      "name": "listingSeed",
+      "type": "bytes",
+      "value": "[108, 105, 115, 116, 105, 110, 103]"
     },
     {
       "name": "pledgeSeed",

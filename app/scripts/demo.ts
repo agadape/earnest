@@ -5,16 +5,18 @@
  * (a $5 bond), a short funding window and a short build period.
  *
  *   Campaign A fills up. Money streams to Budi, three backers pull the brake, the rest goes back.
- *   Campaign B stops at three of five. Everyone is refunded and the first two get the bonus.
+ *   Campaign B stops at three of five. One backer sells her bonus seat instead of waiting.
+ *   Then everyone holding a seat is refunded, and the two bonus seats get the bonus.
  *
  *   npm run demo
  *
  * Run `npm run setup` first. The web app shows the same campaigns while this runs.
  */
-import type { Keypair } from "@solana/web3.js";
+import type { Keypair, PublicKey } from "@solana/web3.js";
 
 import {
   bond,
+  buySeatIxs,
   type Campaign,
   campaignAddress,
   type CampaignTerms,
@@ -23,6 +25,10 @@ import {
   createCampaignIx,
   fetchCampaign,
   fetchConfig,
+  fetchListings,
+  fetchPledges,
+  impliedFailureChance,
+  listSeatIx,
   pledgeIx,
   setBrakeIx,
   statusAt,
@@ -73,6 +79,25 @@ async function log(message: string) {
 }
 
 const balance = (owner: Keypair) => tokenBalance(mint, owner.publicKey);
+const nameOf = (address: PublicKey) =>
+  backers.find(({ wallet }) => wallet.publicKey.equals(address))?.name ?? "someone";
+
+/** Returns every pledge still in `campaign` to whoever holds the seat now. */
+async function refundHolders(label: string, campaign: Campaign) {
+  const pledges = await fetchPledges(program, campaign.address);
+  if (pledges.length === 0) await log(`${label}: a keeper already returned every pledge.`);
+  for (const { backer, index } of pledges) {
+    const before = await tokenBalance(mint, backer);
+    await send(
+      await claimRefundIxs(program, campaign, backer, admin.publicKey),
+      admin,
+    ).catch(alreadySent);
+    await log(
+      `${label}: ${nameOf(backer)} (seat ${index + 1}) is refunded: ` +
+        `${usd(before)} -> ${usd(await tokenBalance(mint, backer))}`,
+    );
+  }
+}
 
 async function load(address: Campaign["address"]): Promise<Campaign> {
   const campaign = await fetchCampaign(program, address);
@@ -92,7 +117,7 @@ async function main() {
   await ensureTokens(mint, budi.publicKey, 10n * USD, faucet);
   for (const { wallet } of backers) {
     await ensureSol(wallet.publicKey, sol, admin);
-    await ensureTokens(mint, wallet.publicKey, 20n * USD, faucet);
+    await ensureTokens(mint, wallet.publicKey, 25n * USD, faucet);
   }
   const budiStart = await balance(budi);
   const backerStart = await Promise.all(backers.map(({ wallet }) => balance(wallet)));
@@ -146,17 +171,24 @@ async function main() {
   await send(await withdrawIxs(program, campaignA, admin.publicKey), admin);
   await log(`A: Budi receives the upfront share. He holds ${usd(await balance(budi))}.`);
 
+  // Sari holds a bonus seat in B and would rather not wait. She offers it, and Wati, who has no
+  // seat in B, buys it. The seat keeps its place in the queue, and with it the bonus.
+  const [, sari, , wati] = backers;
+  await send([await listSeatIx(program, b, sari.wallet.publicKey, 11_500_000n)], sari.wallet);
+  const [offer] = await fetchListings(program, b);
+  const chance = impliedFailureChance(campaignB, offer.ask);
+  await log(
+    `B: sari offers her bonus seat for ${usd(offer.ask)}. That makes sense if she puts the ` +
+      `chance of B not filling at about ${Math.round((chance ?? 0) * 100)}% or lower.`,
+  );
+  await sleep(PAUSE_MS);
+  await send(await buySeatIxs(program, campaignB, offer, wati.wallet.publicKey), wati.wallet);
+  await log(`B: wati buys it. sari holds ${usd(await balance(sari.wallet))} and is out.`);
+
   // B runs out of time. Nobody has to declare it failed: the first refund does.
   await waitUntil(campaignB.deadline);
   await log("B: the deadline passed with 3 of 5 seats taken.");
-  for (const { name, wallet } of backers.slice(0, 3)) {
-    const before = await balance(wallet);
-    await send(
-      await claimRefundIxs(program, campaignB, wallet.publicKey, admin.publicKey),
-      admin,
-    ).catch(alreadySent);
-    await log(`B: ${name} is refunded: ${usd(before)} -> ${usd(await balance(wallet))}`);
-  }
+  await refundHolders("B", campaignB);
   await log(
     `B: ${statusAt(await load(b), await chainTime())}. ` +
       `Vault ${usd(await tokenBalance(mint, b))}, Budi's bond is gone.`,
@@ -177,12 +209,7 @@ async function main() {
   );
   // Whatever was released between Budi's last withdrawal and the brake is still his.
   await send(await withdrawIxs(program, campaignA, admin.publicKey), admin).catch(alreadySent);
-  for (const { wallet } of backers) {
-    await send(
-      await claimRefundIxs(program, campaignA, wallet.publicKey, admin.publicKey),
-      admin,
-    ).catch(alreadySent);
-  }
+  await refundHolders("A", campaignA);
   await send(
     await collectFeeIxs(program, campaignA, config.treasury, admin.publicKey),
     admin,

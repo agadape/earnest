@@ -157,7 +157,17 @@ function BalanceProvider({ children }: { children: ReactNode }) {
   return <BalanceContext.Provider value={data ?? null}>{children}</BalanceContext.Provider>;
 }
 
-export function ChainProvider({ children }: { children: ReactNode }) {
+/**
+ * `balance={false}` leaves out the wallet's balance, for a page that never connects a wallet
+ * and so has no `<WalletProvider>` to ask.
+ */
+export function ChainProvider({
+  balance = true,
+  children,
+}: {
+  balance?: boolean;
+  children: ReactNode;
+}) {
   const { connection } = useConnection();
   const program = useMemo(() => getProgram(connection), [connection]);
   const [version, setVersion] = useState(0);
@@ -168,7 +178,7 @@ export function ChainProvider({ children }: { children: ReactNode }) {
   return (
     <ChainContext.Provider value={chain}>
       <ClockContext.Provider value={now}>
-        <BalanceProvider>{children}</BalanceProvider>
+        {balance ? <BalanceProvider>{children}</BalanceProvider> : children}
       </ClockContext.Provider>
     </ChainContext.Provider>
   );

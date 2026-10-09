@@ -66,10 +66,22 @@ pub struct Campaign {
 #[derive(InitSpace)]
 pub struct Pledge {
     pub campaign: Pubkey,
+    /// Whoever holds the seat now: the wallet that pledged, or one that bought the seat since.
     pub backer: Pubkey,
-    /// Position in the queue, starting at zero.
+    /// Position in the queue, starting at zero. It stays with the seat when the seat is sold.
     pub index: u32,
     pub braked: bool,
+    pub bump: u8,
+}
+
+/// A seat offered for sale by its holder. It is only an offer: the seat stays with the seller,
+/// who can take the offer down at any time, until someone pays the asking price.
+#[account]
+#[derive(InitSpace)]
+pub struct Listing {
+    pub campaign: Pubkey,
+    pub seller: Pubkey,
+    pub ask: u64,
     pub bump: u8,
 }
 
@@ -161,6 +173,27 @@ impl Campaign {
             self.funded_at = now;
         }
         Ok(index)
+    }
+
+    /// Seats change hands only while the outcome is open: before the deadline, or during the
+    /// build. After that a seat is a refund claim or a receipt and stays with its holder.
+    pub fn ensure_tradable(&mut self, now: i64) -> Result<()> {
+        self.sync(now);
+        require!(
+            matches!(self.status, Status::Funding | Status::Building),
+            TandaJadiError::NotTradable
+        );
+        Ok(())
+    }
+
+    /// Hands a seat to a new holder. A brake does not travel with it: pulling it was the
+    /// seller's judgement, so the new holder starts with the brake released.
+    pub fn transfer_seat(&mut self, now: i64, seller_braked: bool) -> Result<()> {
+        self.ensure_tradable(now)?;
+        if seller_braked {
+            self.brakes = self.brakes.checked_sub(1).ok_or_else(overflow)?;
+        }
+        Ok(())
     }
 
     /// Moves one backer's brake. Once more than half of the backers hold it, the stream stops
@@ -475,6 +508,49 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_seat_changes_hands_only_while_the_outcome_is_open() {
+        let mut funding = with_backers(3, DAY);
+        funding.transfer_seat(2 * DAY, false).unwrap();
+        assert_eq!(
+            code(funding.transfer_seat(7 * DAY, false)),
+            TandaJadiError::NotTradable as u32 + 6000
+        );
+
+        let mut building = with_backers(50, DAY);
+        building.transfer_seat(2 * DAY, false).unwrap();
+        assert_eq!(
+            code(building.transfer_seat(15 * DAY, false)),
+            TandaJadiError::NotTradable as u32 + 6000
+        );
+
+        let mut braked = with_backers(50, DAY);
+        for _ in 0..26 {
+            braked.move_brake(DAY, false, true).unwrap();
+        }
+        assert_eq!(
+            code(braked.transfer_seat(DAY, true)),
+            TandaJadiError::NotTradable as u32 + 6000
+        );
+        assert_eq!(braked.brakes, 26);
+    }
+
+    #[test]
+    fn a_sold_seat_arrives_with_its_brake_released() {
+        let mut campaign = with_backers(50, DAY);
+        for _ in 0..25 {
+            campaign.move_brake(DAY, false, true).unwrap();
+        }
+        campaign.transfer_seat(DAY, true).unwrap();
+        assert_eq!(campaign.brakes, 24);
+
+        // The buyer pulling it again counts once, and 25 of 50 is still not a majority.
+        campaign.move_brake(DAY, false, true).unwrap();
+        assert_eq!(campaign.brakes, 25);
+        assert_eq!(campaign.status, Status::Building);
+        assert_eq!(campaign.backers, 50);
+    }
+
     /// A tiny deterministic generator, so a failing run can be repeated exactly.
     struct Rng(u64);
 
@@ -518,11 +594,18 @@ mod tests {
             for _ in 0..150 {
                 match rng.range(0, 7 + eagerness) {
                     0..=1 => now += rng.range(0, pace) as i64,
-                    2..=4 if !pledges.is_empty() => {
+                    2..=3 if !pledges.is_empty() => {
                         let pick = rng.range(0, pledges.len() as u64 - 1) as usize;
                         let on = !pledges[pick].1;
                         if campaign.move_brake(now, !on, on).is_ok() {
                             pledges[pick].1 = on;
+                        }
+                    }
+                    4 if !pledges.is_empty() => {
+                        // A seat is sold: same place in the queue, brake released.
+                        let pick = rng.range(0, pledges.len() as u64 - 1) as usize;
+                        if campaign.transfer_seat(now, pledges[pick].1).is_ok() {
+                            pledges[pick].1 = false;
                         }
                     }
                     5 => pay_creator(&mut campaign, &mut vault, now, run),
@@ -544,6 +627,16 @@ mod tests {
                         }
                     }
                     _ => {}
+                }
+
+                // While seats can still change hands, the count of brakes is exactly the
+                // number of holders pulling one.
+                if matches!(campaign.status, Status::Funding | Status::Building) {
+                    let pulled = pledges.iter().filter(|(_, braked)| *braked).count();
+                    assert_eq!(
+                        campaign.brakes as usize, pulled,
+                        "run {run}: brakes drifted"
+                    );
                 }
             }
 

@@ -48,6 +48,10 @@ Things worth knowing before changing the program:
 - **The campaign closes when the last seat is taken**, and the build period starts in that
   transaction.
 - **A pledge account that survives is a receipt**: proof that this wallet pre-ordered.
+- **A seat can be sold while the outcome is open** (before the deadline, or during the
+  build). The holder posts a price, a buyer pays it straight to them, and the seat moves
+  with its place in the queue, so a bonus seat stays a bonus seat. The vault and the number
+  of backers do not change. A brake does not travel with the seat.
 
 ## Repository
 
@@ -133,6 +137,16 @@ an RPC provider's devnet URL in `NEXT_PUBLIC_RPC_URL`. Going back to a local val
 which is not in git. To deploy at this address you need that file from whoever generated it.
 Otherwise run `anchor keys sync` to switch the code to a keypair of your own.
 
+### What a seat's price says
+
+A bonus seat pays `price + bonus` if the campaign fails and is worth `price` to someone who
+wants the product. A holder who offers it for `price + x` is giving up a possible bonus for
+`x` now, which makes sense if they think a failure is about `x / bonus` likely or less. So
+the cheapest offer for a bonus seat is a rough, public reading of what its holder expects:
+$11.50 on a $10 seat with a $2.50 bonus reads as "60% or lower". Once a campaign is full,
+an offer above the price is a holder testing whether more people want in than there are
+seats. Both are asking prices from single holders, not forecasts.
+
 ## What this does not solve
 
 Stated plainly, because a reader will find them anyway.
@@ -145,6 +159,15 @@ Stated plainly, because a reader will find them anyway.
   bond, not that share. It is capped at 30% by the program.
 - **Backers can brake a campaign that was delivered.** It takes a majority, and what they can
   claw back shrinks every second, but for a digital product delivered early this is real.
+- **A seat's price can be staged.** In a market this thin, whoever holds a seat can post any
+  price. The only discipline is that an offer is firm: one that is too cheap gets bought.
+  Nothing stops a creator from holding seats and posting prices that flatter the campaign.
+- **A creator can buy out a brake.** During the build they can buy seats from backers who
+  pulled it, which releases those brakes. The sellers got the price they asked; the backers
+  who stay have fewer allies.
+- **Selling a bonus seat near the deadline is a bet on the campaign failing.** Whether that
+  is treated as reselling a pre-order or as something regulated depends on the country.
+  Nobody has given us a legal opinion.
 - **The fee is taken when the target is reached**, also if the campaign is braked later.
 - **`initialize_config` can be called by whoever gets there first** after a fresh deployment. Run
   it in the same breath as the deploy.
