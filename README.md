@@ -147,6 +147,12 @@ $11.50 on a $10 seat with a $2.50 bonus reads as "60% or lower". Once a campaign
 an offer above the price is a holder testing whether more people want in than there are
 seats. Both are asking prices from single holders, not forecasts.
 
+Every sale is also recorded on chain, per campaign: how many seats were sold, for how much
+in total, and the latest sixteen sales with their price, seat and time. Only `buy_seat`
+writes that record, so it holds what was actually paid and nothing else. The campaign page
+shows the last price paid and a small line of the recent ones, and reads a sale the same way
+as an offer, with one difference: a sale is a price a buyer and a seller both accepted.
+
 ## What this does not solve
 
 Stated plainly, because a reader will find them anyway.
@@ -162,6 +168,9 @@ Stated plainly, because a reader will find them anyway.
 - **A seat's price can be staged.** In a market this thin, whoever holds a seat can post any
   price. The only discipline is that an offer is firm: one that is too cheap gets bought.
   Nothing stops a creator from holding seats and posting prices that flatter the campaign.
+- **A recorded sale can be staged too.** One person with two wallets can sell a seat to
+  themselves at any price, and it costs them only network fees. The record proves a payment
+  happened, not that two different people agreed on it.
 - **A creator can buy out a brake.** During the build they can buy seats from backers who
   pulled it, which releases those brakes. The sellers got the price they asked; the backers
   who stay have fewer allies.

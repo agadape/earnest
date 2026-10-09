@@ -4,7 +4,7 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 use crate::{
     constants::*,
     error::TandaJadiError,
-    state::{Campaign, Listing, Pledge},
+    state::{Campaign, Listing, Market, Pledge, Sale},
 };
 
 /// Buys a seat from its holder at the price they asked. The payment goes straight from the buyer
@@ -42,6 +42,15 @@ pub struct BuySeat<'info> {
         bump
     )]
     pub buyer_pledge: Box<Account<'info, Pledge>>,
+    /// What seats of this campaign have sold for. The first sale creates it.
+    #[account(
+        init_if_needed,
+        payer = buyer,
+        space = 8 + Market::INIT_SPACE,
+        seeds = [MARKET_SEED, campaign.key().as_ref()],
+        bump
+    )]
+    pub market: Box<Account<'info, Market>>,
     #[account(mut, token::mint = mint, token::authority = buyer)]
     pub buyer_token: Box<Account<'info, TokenAccount>>,
     #[account(mut, token::mint = mint, token::authority = seller)]
@@ -68,6 +77,16 @@ pub fn handle_buy_seat(ctx: Context<BuySeat>, max_price: u64) -> Result<()> {
         braked: false,
         bump: ctx.bumps.buyer_pledge,
     });
+
+    // Counters only ever grow here, so a market that already exists is never reset.
+    let market = &mut ctx.accounts.market;
+    market.campaign = ctx.accounts.campaign.key();
+    market.bump = ctx.bumps.market;
+    market.record(Sale {
+        at: now,
+        price: ask,
+        seat: seat.index,
+    })?;
 
     let accounts = TransferChecked {
         from: ctx.accounts.buyer_token.to_account_info(),

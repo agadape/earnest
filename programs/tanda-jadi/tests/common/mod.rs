@@ -438,8 +438,21 @@ pub fn listing_address(campaign: &Pubkey, seller: &Pubkey) -> Pubkey {
     .0
 }
 
+pub fn market_address(campaign: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[tanda_jadi::constants::MARKET_SEED, campaign.as_ref()],
+        &tanda_jadi::id(),
+    )
+    .0
+}
+
 /// The seat market.
 impl World {
+    pub fn market(&self, campaign: &Pubkey) -> tanda_jadi::state::Market {
+        let account = self.svm.get_account(&market_address(campaign)).unwrap();
+        tanda_jadi::state::Market::try_deserialize(&mut account.data.as_slice()).unwrap()
+    }
+
     pub fn pledge_of(&self, campaign: &Pubkey, holder: &Pubkey) -> tanda_jadi::state::Pledge {
         let account = self
             .svm
@@ -495,6 +508,19 @@ impl World {
         buyer: &Keypair,
         max_price: u64,
     ) -> Result<(), String> {
+        let market = market_address(campaign);
+        self.buy_seat_recording_in(campaign, seller, buyer, max_price, &market)
+    }
+
+    /// Buys a seat while naming `market` as the account the sale is recorded in.
+    pub fn buy_seat_recording_in(
+        &mut self,
+        campaign: &Pubkey,
+        seller: &Pubkey,
+        buyer: &Keypair,
+        max_price: u64,
+        market: &Pubkey,
+    ) -> Result<(), String> {
         let instruction = Instruction::new_with_bytes(
             tanda_jadi::id(),
             &tanda_jadi::instruction::BuySeat { max_price }.data(),
@@ -506,6 +532,7 @@ impl World {
                 listing: listing_address(campaign, seller),
                 seller_pledge: pledge_address(campaign, seller),
                 buyer_pledge: pledge_address(campaign, &buyer.pubkey()),
+                market: *market,
                 buyer_token: self.token_account(&buyer.pubkey()),
                 seller_token: self.token_account(seller),
                 token_program: token::ID,

@@ -131,6 +131,32 @@ export type TandaJadi = {
           }
         },
         {
+          "name": "market",
+          "docs": [
+            "What seats of this campaign have sold for. The first sale creates it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              }
+            ]
+          }
+        },
+        {
           "name": "buyerToken",
           "writable": true
         },
@@ -1277,6 +1303,19 @@ export type TandaJadi = {
       ]
     },
     {
+      "name": "market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
       "name": "pledge",
       "discriminator": [
         161,
@@ -1606,6 +1645,47 @@ export type TandaJadi = {
       }
     },
     {
+      "name": "market",
+      "docs": [
+        "What seats of one campaign actually sold for, as opposed to what holders ask. Created by the",
+        "first sale and written only by `buy_seat`, so nobody can add a sale that did not happen."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "campaign",
+            "type": "pubkey"
+          },
+          {
+            "name": "sales",
+            "type": "u32"
+          },
+          {
+            "name": "volume",
+            "type": "u64"
+          },
+          {
+            "name": "recent",
+            "docs": [
+              "The latest sales, oldest first."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "sale"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "pledge",
       "type": {
         "kind": "struct",
@@ -1635,6 +1715,29 @@ export type TandaJadi = {
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sale",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "at",
+            "type": "i64"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "seat",
+            "docs": [
+              "Position in the queue of the seat that changed hands, starting at zero."
+            ],
+            "type": "u32"
           }
         ]
       }
@@ -1678,6 +1781,11 @@ export type TandaJadi = {
       "name": "listingSeed",
       "type": "bytes",
       "value": "[108, 105, 115, 116, 105, 110, 103]"
+    },
+    {
+      "name": "marketSeed",
+      "type": "bytes",
+      "value": "[109, 97, 114, 107, 101, 116]"
     },
     {
       "name": "pledgeSeed",

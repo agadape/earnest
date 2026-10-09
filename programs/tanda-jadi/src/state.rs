@@ -1,6 +1,9 @@
 use anchor_lang::prelude::*;
 
-use crate::{constants::BPS_DENOMINATOR, error::TandaJadiError};
+use crate::{
+    constants::{BPS_DENOMINATOR, RECENT_SALES},
+    error::TandaJadiError,
+};
 
 #[account]
 #[derive(InitSpace)]
@@ -83,6 +86,40 @@ pub struct Listing {
     pub seller: Pubkey,
     pub ask: u64,
     pub bump: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, InitSpace, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Sale {
+    pub at: i64,
+    pub price: u64,
+    /// Position in the queue of the seat that changed hands, starting at zero.
+    pub seat: u32,
+}
+
+/// What seats of one campaign actually sold for, as opposed to what holders ask. Created by the
+/// first sale and written only by `buy_seat`, so nobody can add a sale that did not happen.
+#[account]
+#[derive(InitSpace)]
+pub struct Market {
+    pub campaign: Pubkey,
+    pub sales: u32,
+    pub volume: u64,
+    /// The latest sales, oldest first.
+    #[max_len(RECENT_SALES)]
+    pub recent: Vec<Sale>,
+    pub bump: u8,
+}
+
+impl Market {
+    pub fn record(&mut self, sale: Sale) -> Result<()> {
+        self.sales = self.sales.checked_add(1).ok_or_else(overflow)?;
+        self.volume = self.volume.checked_add(sale.price).ok_or_else(overflow)?;
+        if self.recent.len() == RECENT_SALES {
+            self.recent.remove(0);
+        }
+        self.recent.push(sale);
+        Ok(())
+    }
 }
 
 fn overflow() -> Error {
@@ -549,6 +586,34 @@ mod tests {
         assert_eq!(campaign.brakes, 25);
         assert_eq!(campaign.status, Status::Building);
         assert_eq!(campaign.backers, 50);
+    }
+
+    #[test]
+    fn a_market_counts_every_sale_and_keeps_the_latest() {
+        let mut market = Market {
+            campaign: Pubkey::default(),
+            sales: 0,
+            volume: 0,
+            recent: Vec::new(),
+            bump: 255,
+        };
+        for n in 0..20u64 {
+            market
+                .record(Sale {
+                    at: n as i64,
+                    price: 10 * USD + n,
+                    seat: n as u32 % 3,
+                })
+                .unwrap();
+        }
+
+        assert_eq!(market.sales, 20);
+        assert_eq!(market.volume, 20 * 10 * USD + (0..20).sum::<u64>());
+        // Sixteen are kept, oldest first: sales 4 to 19.
+        assert_eq!(market.recent.len(), RECENT_SALES);
+        assert_eq!(market.recent[0].price, 10 * USD + 4);
+        assert_eq!(market.recent[15].price, 10 * USD + 19);
+        assert!(market.recent.windows(2).all(|pair| pair[0].at < pair[1].at));
     }
 
     /// A tiny deterministic generator, so a failing run can be repeated exactly.

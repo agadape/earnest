@@ -493,3 +493,66 @@ fn a_seat_sold_during_the_build_arrives_with_its_brake_released() {
     assert_eq!(world.balance(&dewi.pubkey()), refund);
     assert_custom_error(world.claim_refund(&campaign, &backers[0].pubkey()), 3012);
 }
+
+#[test]
+fn every_sale_is_recorded_and_nothing_else() {
+    let mut world = World::new();
+    let budi = world.wallet(2 * BOND);
+    let campaign = world.create_campaign(&budi, terms()).unwrap();
+    let backers = world.backers(&campaign, 2);
+    let rina = &backers[0];
+
+    // Offers alone leave no trace: there is no market until a seat is actually paid for.
+    world.list_seat(&campaign, rina, 11_500_000).unwrap();
+    assert!(!world.exists(&market_address(&campaign)));
+
+    // A sale cannot be written into another campaign's market (ConstraintSeeds).
+    let other = world
+        .create_campaign(&budi, CreateCampaignArgs { id: 2, ..terms() })
+        .unwrap();
+    let dewi = world.wallet(30 * USD);
+    assert_custom_error(
+        world.buy_seat_recording_in(
+            &campaign,
+            &rina.pubkey(),
+            &dewi,
+            11_500_000,
+            &market_address(&other),
+        ),
+        2006,
+    );
+
+    world.wait(DAY);
+    world
+        .buy_seat(&campaign, &rina.pubkey(), &dewi, 11_500_000)
+        .unwrap();
+    let market = world.market(&campaign);
+    assert_eq!((market.sales, market.volume), (1, 11_500_000));
+    assert_eq!(market.recent.len(), 1);
+    assert_eq!(
+        (market.recent[0].price, market.recent[0].seat),
+        (11_500_000, 0)
+    );
+    assert_eq!(market.recent[0].at, world.now());
+
+    // The same seat sells again, dearer. Both sales stay on record, oldest first.
+    world.wait(DAY);
+    world.list_seat(&campaign, &dewi, 12 * USD).unwrap();
+    let tono = world.wallet(12 * USD);
+    world
+        .buy_seat(&campaign, &dewi.pubkey(), &tono, 12 * USD)
+        .unwrap();
+    let market = world.market(&campaign);
+    assert_eq!((market.sales, market.volume), (2, 23_500_000));
+    assert_eq!(
+        market
+            .recent
+            .iter()
+            .map(|sale| sale.price)
+            .collect::<Vec<_>>(),
+        [11_500_000, 12 * USD]
+    );
+    assert!(market.recent[0].at < market.recent[1].at);
+    assert_eq!(world.pledge_of(&campaign, &tono.pubkey()).index, 0);
+    assert!(!world.exists(&market_address(&other)));
+}

@@ -26,6 +26,7 @@ import {
   fetchCampaign,
   fetchConfig,
   fetchListings,
+  fetchMarket,
   fetchPledges,
   impliedFailureChance,
   listSeatIx,
@@ -184,6 +185,11 @@ async function main() {
   await sleep(PAUSE_MS);
   await send(await buySeatIxs(program, campaignB, offer, wati.wallet.publicKey), wati.wallet);
   await log(`B: wati buys it. sari holds ${usd(await balance(sari.wallet))} and is out.`);
+  const traded = await fetchMarket(program, b);
+  await log(
+    `B: the sale is on record on chain: ${traded?.sales ?? 0} so far, ` +
+      `the last at ${usd(traded?.recent.at(-1)?.price ?? 0n)}.`,
+  );
 
   // B runs out of time. Nobody has to declare it failed: the first refund does.
   await waitUntil(campaignB.deadline);

@@ -12,6 +12,12 @@ pub const PLEDGE_SEED: &[u8] = b"pledge";
 #[constant]
 pub const LISTING_SEED: &[u8] = b"listing";
 
+#[constant]
+pub const MARKET_SEED: &[u8] = b"market";
+
+/// How many of its latest sales a campaign's market keeps.
+pub const RECENT_SALES: usize = 16;
+
 pub const BPS_DENOMINATOR: u64 = 10_000;
 
 /// Ceiling for the service fee, taken only from campaigns that reach their target.

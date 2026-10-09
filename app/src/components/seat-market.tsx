@@ -3,6 +3,7 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useId, useMemo, useState } from "react";
 
+import { isBonusSale, SeatTrades, useMarket } from "@/components/seat-trades";
 import { Button, Card, Tag } from "@/components/ui";
 import { useConnectDialog } from "@/components/wallet-button";
 import { useBalance, usePolled, useProgram } from "@/lib/chain";
@@ -16,6 +17,7 @@ import {
   impliedFailureChance,
   type Listing,
   listSeatIx,
+  type Market,
   parseTokens,
   type Pledge,
   refundIfFailed,
@@ -60,6 +62,7 @@ export function SeatMarket({
     [program, address],
   );
   const { data: listings } = usePolled(load);
+  const market = useMarket(campaign);
 
   // An offer can outlive its seat, so only those whose seller still holds one count.
   const offers = useMemo<Offer[]>(() => {
@@ -163,7 +166,8 @@ export function SeatMarket({
         </ul>
       )}
 
-      <Reading campaign={campaign} offers={offers} building={building} />
+      <SeatTrades campaign={campaign} market={market} now={now} />
+      <Reading campaign={campaign} offers={offers} market={market} building={building} />
 
       {mine && !myOffer && (
         <SellForm
@@ -215,14 +219,19 @@ function SeatLabel({
   );
 }
 
-/** What the cheapest offer says, in plain words. Silent when it says nothing reliable. */
+/**
+ * What the prices say, in plain words. A sale counts for more than an offer: an offer is one
+ * holder's view, a sale is where two people met. Silent when neither says anything reliable.
+ */
 function Reading({
   campaign,
   offers,
+  market,
   building,
 }: {
   campaign: Campaign;
   offers: Offer[];
+  market: Market | null | undefined;
   building: boolean;
 }) {
   if (building) {
@@ -233,6 +242,22 @@ function Reading({
         Every seat is taken, and the cheapest one on offer costs {usd(cheapest.listing.ask)},
         more than the {usd(campaign.price)} it was pledged for. That is what a holder is asking,
         not yet what anyone paid.
+      </p>
+    );
+  }
+
+  const sale = [...(market?.recent ?? [])].reverse().find((s) => isBonusSale(campaign, s));
+  const traded = sale ? impliedFailureChance(campaign, sale.price) : null;
+  if (sale && traded !== null) {
+    return (
+      <p className="mt-4 rounded-xl bg-stone-50 p-4 text-sm leading-6 text-stone-700">
+        <strong className="font-semibold">What the last sale says.</strong> A bonus seat last
+        sold for {usd(sale.price)}: {usd(sale.price - campaign.price)} over what a seat costs, for
+        a seat that pays a {usd(campaign.bonusPerEarly)} bonus if the campaign does not fill. That
+        price makes sense to a buyer who thinks a failure is at least about{" "}
+        <strong className="font-semibold">{Math.round(traded * 100)}%</strong> likely, and to a
+        seller who thinks it is at most that. It is a single trade, and nothing stops one person
+        from being on both sides of it, so it is not a forecast you can rely on.
       </p>
     );
   }

@@ -20,7 +20,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.2.1"
+# init-if-needed: the first sale of a seat creates the campaign's market account.
+anchor-lang = { version = "1.2.1", features = ["init-if-needed"] }
 anchor-spl = "1.2.1"
 
 [dev-dependencies]

@@ -14,6 +14,7 @@ import {
   RefundPanel,
 } from "@/components/campaign-panels";
 import { Share } from "@/components/share";
+import { SeatTradesCard } from "@/components/seat-trades";
 import { Bar, Card, Notice, StatusBadge, Tag } from "@/components/ui";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
@@ -256,6 +257,9 @@ function Loaded({
           {status === "building" && <BuildingPanel {...panel} />}
           {(status === "failed" || status === "braked") && <RefundPanel {...panel} />}
           {status === "completed" && <CompletedPanel {...panel} />}
+          {status !== "funding" && status !== "building" && (
+            <SeatTradesCard campaign={campaign} now={now} />
+          )}
           <Seats
             campaign={campaign}
             pledges={pledges}

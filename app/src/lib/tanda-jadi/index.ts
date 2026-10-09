@@ -57,6 +57,13 @@ export function pledgeAddress(campaign: PublicKey, backer: PublicKey): PublicKey
   )[0];
 }
 
+export function marketAddress(campaign: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), campaign.toBuffer()],
+    PROGRAM_ID,
+  )[0];
+}
+
 export function listingAddress(campaign: PublicKey, seller: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("listing"), campaign.toBuffer(), seller.toBuffer()],
@@ -118,6 +125,21 @@ export interface Listing {
   campaign: PublicKey;
   seller: PublicKey;
   ask: bigint;
+}
+
+/** One seat changing hands: what was actually paid, as opposed to what a holder asks. */
+export interface Sale {
+  at: number;
+  price: bigint;
+  /** Position in the queue of the seat that was sold, starting at zero. */
+  seat: number;
+}
+
+/** Every sale of a campaign's seats, counted, with the latest sixteen kept oldest first. */
+export interface Market {
+  sales: number;
+  volume: bigint;
+  recent: Sale[];
 }
 
 export interface Config {
@@ -207,6 +229,25 @@ export async function fetchPledges(
   return all
     .map(({ publicKey, account }) => toPledge(publicKey, account))
     .sort((a, b) => a.index - b.index);
+}
+
+/** What this campaign's seats have sold for, or `null` if none has been sold yet. */
+export async function fetchMarket(
+  program: TandaJadiProgram,
+  campaign: PublicKey,
+): Promise<Market | null> {
+  const raw = await program.account.market.fetchNullable(marketAddress(campaign));
+  return (
+    raw && {
+      sales: raw.sales,
+      volume: big(raw.volume),
+      recent: raw.recent.map((sale) => ({
+        at: sale.at.toNumber(),
+        price: big(sale.price),
+        seat: sale.seat,
+      })),
+    }
+  );
 }
 
 /** The offer `seller` has standing for their seat, or `null`. Buying a seat removes its offer. */
@@ -327,7 +368,8 @@ export function seatsTradable(c: Campaign, now: number): boolean {
  *
  * A bonus seat pays `price + bonus` if the campaign fails and is worth `price` to someone who
  * wants the product. Letting it go for `price + x` only makes sense to a holder who thinks a
- * failure is about `x / bonus` likely, or less. It is one holder's firm offer, not a measurement.
+ * failure is about `x / bonus` likely, or less; paying that much only to a buyer who thinks it
+ * is at least that likely. An offer is one holder's view. A sale is where two people met.
  */
 export function impliedFailureChance(c: Campaign, bonusSeatAsk: bigint): number | null {
   if (c.bonusPerEarly === 0n) return null;
@@ -534,6 +576,7 @@ export async function buySeatIxs(
         campaign: campaign.address,
         mint: campaign.mint,
         seller: listing.seller,
+        market: marketAddress(campaign.address),
         buyerToken: tokenAccount(campaign.mint, buyer),
         sellerToken,
       })
