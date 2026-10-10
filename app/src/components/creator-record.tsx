@@ -132,8 +132,9 @@ export function CreatorRecordView({ address }: { address: string }) {
         <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
           Everything here is read from the campaigns this wallet opened. A campaign that
           didn&apos;t fill is not a black mark: it means the creator asked before building, and
-          paid the bonus they promised. One thing this cannot tell you: a creator can start over
-          with a new wallet, so an empty record says nothing either way.
+          paid the bonus they promised. Two things this cannot tell you: a creator can start over
+          with a new wallet, so an empty record says nothing either way, and nothing stops a
+          creator from backing a small campaign of their own to the end.
         </p>
       </header>
 

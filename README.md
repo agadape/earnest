@@ -196,6 +196,8 @@ Stated plainly, because a reader will find them anyway.
   it is true. A creator who posts "almost done" every day keeps the silence clock at zero.
 - **A record can be shed.** A creator whose campaigns were stopped can open the next one from
   a new wallet. An empty record says nothing either way; only a good one says something.
+- **A record can be made up of real campaigns.** A creator can back a small campaign of their
+  own and let it run to the end. It costs them the fee, and it reads as "1 completed".
 - **A creator can buy out a brake.** During the build they can buy seats from backers who
   pulled it, which releases those brakes. The sellers got the price they asked; the backers
   who stay have fewer allies.
