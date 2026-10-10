@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from "react";
 
+import { BRAND } from "@/lib/brand";
 import type { CampaignPreview } from "@/lib/server/preview";
 
 export const OG_SIZE = { width: 1200, height: 630 };
@@ -31,7 +32,7 @@ function Frame({ children }: { children: ReactNode }) {
       }}
     >
       <div style={{ display: "flex", fontSize: 36, color: ACCENT, letterSpacing: "-0.01em" }}>
-        Tanda Jadi
+        {BRAND}
       </div>
       <div style={{ display: "flex", flexDirection: "column" }}>{children}</div>
     </div>

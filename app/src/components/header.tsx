@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { FaucetButton } from "@/components/faucet-button";
 import { WalletButton } from "@/components/wallet-button";
+import { BRAND } from "@/lib/brand";
 import { useBalance } from "@/lib/chain";
 import { DEMO_WALLET_NAME } from "@/lib/demo-wallet";
 import { DEMO_WALLET_ENABLED, IS_LOCAL_RPC } from "@/lib/env";
@@ -19,7 +20,7 @@ export function Header() {
     <header className="z-30 border-b border-stone-200 bg-white/90 backdrop-blur sm:sticky sm:top-0">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:gap-x-8 sm:px-6">
         <Link href="/" className="text-lg font-semibold tracking-tight">
-          Tanda Jadi
+          {BRAND}
         </Link>
         <nav className="order-last flex w-full gap-6 text-sm text-stone-600 sm:order-none sm:w-auto">
           <Link href="/" className="hover:text-stone-900">
@@ -59,8 +60,9 @@ export function Footer() {
   return (
     <footer className="mx-auto w-full max-w-5xl px-4 pb-10 pt-6 text-xs text-stone-500 sm:px-6">
       <p>
-        Tanda Jadi holds deposits in a vault that follows the campaign&apos;s terms. Neither the
-        creator nor this site can move them any other way.
+        Earnest money is the deposit you put down to show you mean it. {BRAND} holds those
+        deposits in a vault that follows the campaign&apos;s terms. Neither the creator nor this
+        site can move them any other way.
         {DEMO_WALLET_ENABLED &&
           ` This is a demo${IS_LOCAL_RPC ? " on a local test network" : ""}: the dollars are play money.`}
       </p>

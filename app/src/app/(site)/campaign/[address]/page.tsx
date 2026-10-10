@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { CampaignView } from "@/components/campaign-view";
+import { BRAND } from "@/lib/brand";
 import { campaignPreview } from "@/lib/server/preview";
 
 export async function generateMetadata({
@@ -19,7 +20,7 @@ export async function generateMetadata({
     description,
     // The picture comes from `opengraph-image.tsx` in this folder.
     openGraph: {
-      siteName: "Tanda Jadi",
+      siteName: BRAND,
       type: "website",
       url: `/campaign/${preview.address}`,
       title,

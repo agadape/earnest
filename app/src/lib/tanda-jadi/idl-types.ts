@@ -975,6 +975,69 @@ export type TandaJadi = {
       "args": []
     },
     {
+      "name": "postUpdate",
+      "discriminator": [
+        133,
+        95,
+        207,
+        175,
+        11,
+        79,
+        118,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "campaign"
+          ]
+        },
+        {
+          "name": "campaign"
+        },
+        {
+          "name": "journal",
+          "docs": [
+            "The first update creates it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  106,
+                  111,
+                  117,
+                  114,
+                  110,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "setBrake",
       "discriminator": [
         194,
@@ -1290,6 +1353,19 @@ export type TandaJadi = {
       ]
     },
     {
+      "name": "journal",
+      "discriminator": [
+        246,
+        141,
+        106,
+        208,
+        98,
+        92,
+        66,
+        208
+      ]
+    },
+    {
       "name": "listing",
       "discriminator": [
         218,
@@ -1429,6 +1505,16 @@ export type TandaJadi = {
       "code": 6019,
       "name": "askTooHigh",
       "msg": "The seat now costs more than the buyer agreed to pay"
+    },
+    {
+      "code": 6020,
+      "name": "emptyUpdate",
+      "msg": "An update needs some text"
+    },
+    {
+      "code": 6021,
+      "name": "updateTooLong",
+      "msg": "An update can be at most 200 bytes long"
     }
   ],
   "types": [
@@ -1617,6 +1703,44 @@ export type TandaJadi = {
       }
     },
     {
+      "name": "journal",
+      "docs": [
+        "What the creator has told their backers, and when. Created by the first update and",
+        "written only by the creator, so a backer deciding whether to pull the brake can see",
+        "how long the creator has been silent. It moves no money and changes no rule."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "campaign",
+            "type": "pubkey"
+          },
+          {
+            "name": "posted",
+            "type": "u32"
+          },
+          {
+            "name": "recent",
+            "docs": [
+              "The latest updates, oldest first."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "update"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "listing",
       "docs": [
         "A seat offered for sale by its holder. It is only an offer: the seat stays with the seller,",
@@ -1764,6 +1888,22 @@ export type TandaJadi = {
           }
         ]
       }
+    },
+    {
+      "name": "update",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "at",
+            "type": "i64"
+          },
+          {
+            "name": "text",
+            "type": "string"
+          }
+        ]
+      }
     }
   ],
   "constants": [
@@ -1776,6 +1916,11 @@ export type TandaJadi = {
       "name": "configSeed",
       "type": "bytes",
       "value": "[99, 111, 110, 102, 105, 103]"
+    },
+    {
+      "name": "journalSeed",
+      "type": "bytes",
+      "value": "[106, 111, 117, 114, 110, 97, 108]"
     },
     {
       "name": "listingSeed",

@@ -57,7 +57,7 @@ export function CampaignList() {
   return (
     <div className="space-y-10">
       {open.length > 0 ? (
-        <Cards campaigns={open} now={now} />
+        <CampaignCards campaigns={open} now={now} />
       ) : (
         <p className="text-sm leading-6 text-stone-600">
           No campaign is open right now.{" "}
@@ -81,7 +81,7 @@ export function CampaignList() {
   );
 }
 
-function Cards({ campaigns, now }: { campaigns: Campaign[]; now: number }) {
+export function CampaignCards({ campaigns, now }: { campaigns: Campaign[]; now: number }) {
   return (
     <ul className="grid gap-4 sm:grid-cols-2">
       {campaigns.map((campaign) => (
@@ -101,7 +101,7 @@ function EndedCards({ campaigns, now }: { campaigns: Campaign[]; now: number }) 
   const hidden = campaigns.length - ENDED_SHOWN;
   return (
     <>
-      <Cards campaigns={all ? campaigns : campaigns.slice(0, ENDED_SHOWN)} now={now} />
+      <CampaignCards campaigns={all ? campaigns : campaigns.slice(0, ENDED_SHOWN)} now={now} />
       {hidden > 0 && !all && (
         <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAll(true)}>
           Show {hidden} more

@@ -3,6 +3,7 @@
 import { type ReactNode, useMemo } from "react";
 
 import { Bar, buttonClass, StatusBadge } from "@/components/ui";
+import { BRAND } from "@/lib/brand";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
 import { formatDuration, usd } from "@/lib/format";
@@ -52,7 +53,7 @@ function Frame({ badge, children }: { badge?: ReactNode; children: ReactNode }) 
           rel="noopener"
           className="text-xs font-semibold tracking-tight text-stone-900 hover:text-accent"
         >
-          Tanda Jadi
+          {BRAND}
         </a>
         {badge}
       </div>
@@ -127,7 +128,7 @@ function Loaded({ campaign, now }: { campaign: Campaign; now: number }) {
           className={`${buttonClass("primary", "sm")} w-full`}
         >
           {/* Nobody can pledge once the seats have filled or the deadline has passed. */}
-          {open ? "Pledge on Tanda Jadi" : "See it on Tanda Jadi"}
+          {open ? `Pledge on ${BRAND}` : `See it on ${BRAND}`}
         </a>
       </div>
     </Frame>

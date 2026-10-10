@@ -11,6 +11,9 @@
 //! While the outcome is open a backer can sell their seat to someone else. The seat keeps its
 //! place in the queue, so what a bonus seat sells for says how likely its holders think a
 //! failure is.
+//!
+//! The creator can post short updates that stay on record with their time, so backers
+//! deciding about the brake can see how long the creator has been silent.
 
 pub mod constants;
 pub mod error;
@@ -76,5 +79,9 @@ pub mod tanda_jadi {
 
     pub fn buy_seat(ctx: Context<BuySeat>, max_price: u64) -> Result<()> {
         crate::instructions::buy_seat::handle_buy_seat(ctx, max_price)
+    }
+
+    pub fn post_update(ctx: Context<PostUpdate>, text: String) -> Result<()> {
+        crate::instructions::post_update::handle_post_update(ctx, text)
     }
 }

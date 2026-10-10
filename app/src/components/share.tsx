@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from "react";
 
 import { Button, buttonClass, Card } from "@/components/ui";
+import { BRAND } from "@/lib/brand";
 
 const never = () => () => {};
 
@@ -28,7 +29,7 @@ export function Share({ address, text }: { address: string; text: string }) {
   const link = `${origin}/campaign/${address}`;
   const post = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`;
   // Nothing a creator typed goes in here, only the address, which is letters and digits.
-  const code = `<iframe src="${origin}/embed/${address}" title="Tanda Jadi campaign" width="100%" height="260" style="max-width:480px;border:1px solid #e7e5e4;border-radius:16px" loading="lazy"></iframe>`;
+  const code = `<iframe src="${origin}/embed/${address}" title="${BRAND} campaign" width="100%" height="260" style="max-width:480px;border:1px solid #e7e5e4;border-radius:16px" loading="lazy"></iframe>`;
 
   return (
     <Card>

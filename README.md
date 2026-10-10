@@ -1,9 +1,10 @@
-# Tanda Jadi
+# Earnest
 
 Pre-orders that pay the buyer back **with a bonus** when too few people join.
 
-*Tanda jadi* is Indonesian for the small deposit you put down to show you are serious about
-buying something.
+*Earnest money* is the small deposit you put down to show you are serious about buying
+something. The Indonesian for it is *tanda jadi*, the name this project started under and the
+one its program and code still carry.
 
 ## The idea in one story
 
@@ -52,6 +53,10 @@ Things worth knowing before changing the program:
   build). The holder posts a price, a buyer pays it straight to them, and the seat moves
   with its place in the queue, so a bonus seat stays a bonus seat. The vault and the number
   of backers do not change. A brake does not travel with the seat.
+- **The creator can post updates, and only the creator.** Each one is kept on chain with its
+  time (`post_update`; the latest five, and a count of all). It moves no money and changes no
+  rule. It is there so that backers deciding about the brake can see how long the creator has
+  been silent, and so that there is a place to say where the finished thing is.
 
 ## Repository
 
@@ -120,7 +125,7 @@ Windows drive (`/mnt/c/...`), keep build output on the Linux side or builds get 
 
 ### Devnet
 
-A hosted copy of the web app runs against devnet at <https://tanda-jadi.vercel.app>. It offers a
+A hosted copy of the web app runs against devnet at <https://inearnest.vercel.app>. It offers a
 play-money wallet, so it can be tried without installing anything.
 Every push to `main` redeploys it; the Vercel project builds from the `app/` folder.
 
@@ -160,6 +165,15 @@ writes that record, so it holds what was actually paid and nothing else. The cam
 shows the last price paid and a small line of the recent ones, and reads a sale the same way
 as an offer, with one difference: a sale is a price a buyer and a seller both accepted.
 
+### What a creator did before
+
+Every campaign names the wallet that opened it, so a creator's history can be read straight
+from the chain: how many campaigns they opened, how many ran to the end, how many did not fill
+and what that cost them in bonuses, how many their backers stopped. The app shows it in one
+line under a campaign's title and in full at `/creator/<address>`. A campaign that did not
+fill counts for the creator here, not against them: they asked before building and paid what
+they promised.
+
 ## What this does not solve
 
 Stated plainly, because a reader will find them anyway.
@@ -178,6 +192,10 @@ Stated plainly, because a reader will find them anyway.
 - **A recorded sale can be staged too.** One person with two wallets can sell a seat to
   themselves at any price, and it costs them only network fees. The record proves a payment
   happened, not that two different people agreed on it.
+- **An update is only the creator's word.** The chain proves who wrote it and when, not that
+  it is true. A creator who posts "almost done" every day keeps the silence clock at zero.
+- **A record can be shed.** A creator whose campaigns were stopped can open the next one from
+  a new wallet. An empty record says nothing either way; only a good one says something.
 - **A creator can buy out a brake.** During the build they can buy seats from backers who
   pulled it, which releases those brakes. The sellers got the price they asked; the backers
   who stay have fewer allies.

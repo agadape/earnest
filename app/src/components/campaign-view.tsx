@@ -13,6 +13,8 @@ import {
   type PanelProps,
   RefundPanel,
 } from "@/components/campaign-panels";
+import { CreatorRecordLine } from "@/components/creator-record";
+import { CreatorUpdatesCard } from "@/components/creator-updates";
 import { Share } from "@/components/share";
 import { SeatTradesCard } from "@/components/seat-trades";
 import { Bar, Card, Notice, StatusBadge, Tag } from "@/components/ui";
@@ -223,11 +225,18 @@ function Loaded({
         </div>
         <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-stone-600">
           <span>
-            by <span className="font-mono">{shortAddress(campaign.creator)}</span>
+            by{" "}
+            <Link
+              href={`/creator/${campaign.creator.toBase58()}`}
+              className="font-mono hover:underline"
+            >
+              {shortAddress(campaign.creator)}
+            </Link>
           </span>
           {viewer?.equals(campaign.creator) && <Tag>You</Tag>}
           <SafeLink uri={campaign.uri} />
         </p>
+        <CreatorRecordLine campaign={campaign} now={now} />
 
         <div className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
           <div>
@@ -257,6 +266,8 @@ function Loaded({
           {status === "building" && <BuildingPanel {...panel} />}
           {(status === "failed" || status === "braked") && <RefundPanel {...panel} />}
           {status === "completed" && <CompletedPanel {...panel} />}
+          {/* While it is being built the updates sit next to the brake, inside its panel. */}
+          {status !== "building" && <CreatorUpdatesCard campaign={campaign} now={now} />}
           {status !== "funding" && status !== "building" && (
             <SeatTradesCard campaign={campaign} now={now} />
           )}

@@ -446,6 +446,57 @@ pub fn market_address(campaign: &Pubkey) -> Pubkey {
     .0
 }
 
+pub fn journal_address(campaign: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[tanda_jadi::constants::JOURNAL_SEED, campaign.as_ref()],
+        &tanda_jadi::id(),
+    )
+    .0
+}
+
+/// The creator's journal.
+impl World {
+    pub fn journal(&self, campaign: &Pubkey) -> tanda_jadi::state::Journal {
+        let account = self.svm.get_account(&journal_address(campaign)).unwrap();
+        tanda_jadi::state::Journal::try_deserialize(&mut account.data.as_slice()).unwrap()
+    }
+
+    pub fn post_update(
+        &mut self,
+        campaign: &Pubkey,
+        author: &Keypair,
+        text: &str,
+    ) -> Result<(), String> {
+        let journal = journal_address(campaign);
+        self.post_update_into(campaign, author, text, &journal)
+    }
+
+    /// Posts an update while naming `journal` as the account it is written to.
+    pub fn post_update_into(
+        &mut self,
+        campaign: &Pubkey,
+        author: &Keypair,
+        text: &str,
+        journal: &Pubkey,
+    ) -> Result<(), String> {
+        let instruction = Instruction::new_with_bytes(
+            tanda_jadi::id(),
+            &tanda_jadi::instruction::PostUpdate {
+                text: text.to_string(),
+            }
+            .data(),
+            tanda_jadi::accounts::PostUpdate {
+                creator: author.pubkey(),
+                campaign: *campaign,
+                journal: *journal,
+                system_program: system_program::ID,
+            }
+            .to_account_metas(None),
+        );
+        self.send(instruction, &[author])
+    }
+}
+
 /// The seat market.
 impl World {
     pub fn market(&self, campaign: &Pubkey) -> tanda_jadi::state::Market {

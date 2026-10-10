@@ -1,5 +1,6 @@
 /**
- * Client for the Tanda Jadi program, shared by the web app and the scripts.
+ * Client for the program behind Earnest (it kept its first name, Tanda Jadi), shared by the
+ * web app and the scripts.
  *
  * Token amounts are `bigint` in base units (six decimals for USDC), times are Unix seconds.
  * The functions under "Money" mirror `programs/tanda-jadi/src/state.rs` so the interface can show
@@ -26,6 +27,7 @@ export const BPS_DENOMINATOR = 10_000n;
 export const MAX_UPFRONT_BPS = 3_000;
 export const MAX_TITLE_LENGTH = 64;
 export const MAX_URI_LENGTH = 200;
+export const MAX_UPDATE_LENGTH = 200;
 
 /** A program handle that can read accounts and build instructions. Sending is up to the caller. */
 export function getProgram(connection: Connection): TandaJadiProgram {
@@ -60,6 +62,13 @@ export function pledgeAddress(campaign: PublicKey, backer: PublicKey): PublicKey
 export function marketAddress(campaign: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("market"), campaign.toBuffer()],
+    PROGRAM_ID,
+  )[0];
+}
+
+export function journalAddress(campaign: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("journal"), campaign.toBuffer()],
     PROGRAM_ID,
   )[0];
 }
@@ -142,6 +151,18 @@ export interface Market {
   recent: Sale[];
 }
 
+/** One thing the creator told their backers. */
+export interface Update {
+  at: number;
+  text: string;
+}
+
+/** What the creator has posted about a campaign: a count, and the latest five, oldest first. */
+export interface Journal {
+  posted: number;
+  recent: Update[];
+}
+
 export interface Config {
   admin: PublicKey;
   treasury: PublicKey;
@@ -203,8 +224,14 @@ export async function fetchCampaign(
   return raw && toCampaign(address, raw);
 }
 
-export async function fetchCampaigns(program: TandaJadiProgram): Promise<Campaign[]> {
-  const all = await program.account.campaign.all();
+/** Every campaign, or only those opened by `creator`. */
+export async function fetchCampaigns(
+  program: TandaJadiProgram,
+  creator?: PublicKey,
+): Promise<Campaign[]> {
+  const all = await program.account.campaign.all(
+    creator ? [{ memcmp: { offset: 8, bytes: creator.toBase58() } }] : undefined,
+  );
   return all.map(({ publicKey, account }) => toCampaign(publicKey, account));
 }
 
@@ -246,6 +273,20 @@ export async function fetchMarket(
         price: big(sale.price),
         seat: sale.seat,
       })),
+    }
+  );
+}
+
+/** What the creator has posted about this campaign, or `null` if they never posted. */
+export async function fetchJournal(
+  program: TandaJadiProgram,
+  campaign: PublicKey,
+): Promise<Journal | null> {
+  const raw = await program.account.journal.fetchNullable(journalAddress(campaign));
+  return (
+    raw && {
+      posted: raw.posted,
+      recent: raw.recent.map((update) => ({ at: update.at.toNumber(), text: update.text })),
     }
   );
 }
@@ -526,6 +567,19 @@ export function setBrakeIx(
   on: boolean,
 ): Promise<TransactionInstruction> {
   return program.methods.setBrake(on).accountsPartial({ backer, campaign }).instruction();
+}
+
+/** Adds a line to the campaign's journal. Only its creator can sign this. */
+export function postUpdateIx(
+  program: TandaJadiProgram,
+  campaign: PublicKey,
+  creator: PublicKey,
+  text: string,
+): Promise<TransactionInstruction> {
+  return program.methods
+    .postUpdate(text)
+    .accountsPartial({ creator, campaign, journal: journalAddress(campaign) })
+    .instruction();
 }
 
 /** Offers the seller's seat at a fixed price. To change the price, unlist and list again. */

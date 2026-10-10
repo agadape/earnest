@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { BRAND, TAGLINE } from "@/lib/brand";
 import { SITE_URL } from "@/lib/server/site";
 
 import "./globals.css";
@@ -18,14 +19,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: SITE_URL,
   title: {
-    default: "Tanda Jadi: pre-orders that pay you back",
-    template: "%s · Tanda Jadi",
+    default: `${BRAND}: ${TAGLINE}`,
+    template: `%s · ${BRAND}`,
   },
   description:
     "Put down a deposit before it's built. If too few people join, you get it back plus a bonus.",
   // Title, description and picture are filled in from the page's own and from the
   // `opengraph-image` next to it. A page that sets `openGraph` replaces all of this.
-  openGraph: { siteName: "Tanda Jadi", type: "website" },
+  openGraph: { siteName: BRAND, type: "website" },
   twitter: { card: "summary_large_image" },
 };
 

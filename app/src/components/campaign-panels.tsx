@@ -3,6 +3,7 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import type { ReactNode } from "react";
 
+import { CreatorUpdates, silence, useJournal } from "@/components/creator-updates";
 import { FaucetButton } from "@/components/faucet-button";
 import { SeatMarket } from "@/components/seat-market";
 import { Bar, Button, Card } from "@/components/ui";
@@ -224,6 +225,8 @@ export function BuildingPanel({ campaign, pledges, mine, now }: PanelProps) {
   const needed = brakesNeeded(campaign);
   const ifBrakedNow = refundIfBrakedAt(campaign, now);
   const wouldDecide = mine !== null && !mine.braked && campaign.brakes + 1 >= needed;
+  const journal = useJournal(campaign);
+  const quiet = silence(campaign, journal, now);
 
   return (
     <>
@@ -254,6 +257,8 @@ export function BuildingPanel({ campaign, pledges, mine, now }: PanelProps) {
         <CreatorPayout campaign={campaign} now={now} />
       </Card>
 
+      <CreatorUpdates campaign={campaign} journal={journal} now={now} always />
+
       <Card>
         <h2 className="text-xl font-semibold tracking-tight">The brake</h2>
         <Lead>
@@ -261,6 +266,7 @@ export function BuildingPanel({ campaign, pledges, mine, now }: PanelProps) {
           them. Once that many hold the brake, what has not been released goes back to the
           backers, together with the creator&apos;s {usd(bond(campaign))} bond.
         </Lead>
+        {quiet && <p className="mt-3 text-sm font-medium text-stone-800">{quiet}</p>}
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-stone-200 p-4">

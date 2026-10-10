@@ -15,6 +15,9 @@ pub const LISTING_SEED: &[u8] = b"listing";
 #[constant]
 pub const MARKET_SEED: &[u8] = b"market";
 
+#[constant]
+pub const JOURNAL_SEED: &[u8] = b"journal";
+
 /// How many of its latest sales a campaign's market keeps.
 pub const RECENT_SALES: usize = 16;
 
@@ -32,3 +35,7 @@ pub const MAX_BUILD_SECS: i64 = 365 * 86_400;
 
 pub const MAX_TITLE_LEN: usize = 64;
 pub const MAX_URI_LEN: usize = 200;
+
+/// How many of the creator's latest updates a campaign's journal keeps.
+pub const RECENT_UPDATES: usize = 5;
+pub const MAX_UPDATE_LEN: usize = 200;

@@ -42,4 +42,8 @@ pub enum TandaJadiError {
     InvalidAsk,
     #[msg("The seat now costs more than the buyer agreed to pay")]
     AskTooHigh,
+    #[msg("An update needs some text")]
+    EmptyUpdate,
+    #[msg("An update can be at most 200 bytes long")]
+    UpdateTooLong,
 }

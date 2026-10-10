@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::{BPS_DENOMINATOR, RECENT_SALES},
+    constants::{BPS_DENOMINATOR, MAX_UPDATE_LEN, RECENT_SALES, RECENT_UPDATES},
     error::TandaJadiError,
 };
 
@@ -118,6 +118,40 @@ impl Market {
             self.recent.remove(0);
         }
         self.recent.push(sale);
+        Ok(())
+    }
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, InitSpace, Clone, PartialEq, Eq, Debug)]
+pub struct Update {
+    pub at: i64,
+    #[max_len(MAX_UPDATE_LEN)]
+    pub text: String,
+}
+
+/// What the creator has told their backers, and when. Created by the first update and
+/// written only by the creator, so a backer deciding whether to pull the brake can see
+/// how long the creator has been silent. It moves no money and changes no rule.
+#[account]
+#[derive(InitSpace)]
+pub struct Journal {
+    pub campaign: Pubkey,
+    pub posted: u32,
+    /// The latest updates, oldest first.
+    #[max_len(RECENT_UPDATES)]
+    pub recent: Vec<Update>,
+    pub bump: u8,
+}
+
+impl Journal {
+    pub fn record(&mut self, at: i64, text: String) -> Result<()> {
+        require!(!text.trim().is_empty(), TandaJadiError::EmptyUpdate);
+        require!(text.len() <= MAX_UPDATE_LEN, TandaJadiError::UpdateTooLong);
+        self.posted = self.posted.checked_add(1).ok_or_else(overflow)?;
+        if self.recent.len() == RECENT_UPDATES {
+            self.recent.remove(0);
+        }
+        self.recent.push(Update { at, text });
         Ok(())
     }
 }
@@ -614,6 +648,41 @@ mod tests {
         assert_eq!(market.recent[0].price, 10 * USD + 4);
         assert_eq!(market.recent[15].price, 10 * USD + 19);
         assert!(market.recent.windows(2).all(|pair| pair[0].at < pair[1].at));
+    }
+
+    #[test]
+    fn a_journal_counts_every_update_and_keeps_the_latest() {
+        let mut journal = Journal {
+            campaign: Pubkey::default(),
+            posted: 0,
+            recent: Vec::new(),
+            bump: 255,
+        };
+        for n in 0..8 {
+            journal.record(n, format!("update {n}")).unwrap();
+        }
+
+        assert_eq!(journal.posted, 8);
+        // Five are kept, oldest first: updates 3 to 7.
+        assert_eq!(journal.recent.len(), RECENT_UPDATES);
+        assert_eq!(journal.recent[0].text, "update 3");
+        assert_eq!(journal.recent[4].text, "update 7");
+        assert!(journal
+            .recent
+            .windows(2)
+            .all(|pair| pair[0].at < pair[1].at));
+
+        // Text that says nothing or does not fit is refused and leaves no trace.
+        assert_eq!(
+            code(journal.record(9, "  \n".to_string())),
+            6000 + TandaJadiError::EmptyUpdate as u32
+        );
+        assert_eq!(
+            code(journal.record(9, "x".repeat(MAX_UPDATE_LEN + 1))),
+            6000 + TandaJadiError::UpdateTooLong as u32
+        );
+        journal.record(9, "x".repeat(MAX_UPDATE_LEN)).unwrap();
+        assert_eq!(journal.posted, 9);
     }
 
     /// A tiny deterministic generator, so a failing run can be repeated exactly.

@@ -556,3 +556,109 @@ fn every_sale_is_recorded_and_nothing_else() {
     assert_eq!(world.pledge_of(&campaign, &tono.pubkey()).index, 0);
     assert!(!world.exists(&market_address(&other)));
 }
+
+#[test]
+fn only_the_creator_can_report_progress() {
+    let mut world = World::new();
+    let budi = world.wallet(2 * BOND);
+    let campaign = world.create_campaign(&budi, terms()).unwrap();
+    let backers = world.backers(&campaign, 5);
+    assert_eq!(world.campaign(&campaign).status, Status::Building);
+
+    // Nothing is on record until the creator says something.
+    assert!(!world.exists(&journal_address(&campaign)));
+
+    // A backer cannot write in the creator's name, and neither can a stranger.
+    let stranger = world.wallet(0);
+    for impostor in [&backers[0], &stranger] {
+        assert_rejected(
+            world.post_update(&campaign, impostor, "All good, trust me"),
+            TandaJadiError::Unauthorized,
+        );
+    }
+    assert!(!world.exists(&journal_address(&campaign)));
+
+    // Text that says nothing or does not fit is refused.
+    assert_rejected(
+        world.post_update(&campaign, &budi, "   "),
+        TandaJadiError::EmptyUpdate,
+    );
+    assert_rejected(
+        world.post_update(&campaign, &budi, &"x".repeat(201)),
+        TandaJadiError::UpdateTooLong,
+    );
+
+    // An update cannot be written into another campaign's journal (ConstraintSeeds).
+    let other = world
+        .create_campaign(&budi, CreateCampaignArgs { id: 2, ..terms() })
+        .unwrap();
+    assert_custom_error(
+        world.post_update_into(&campaign, &budi, "Day 1", &journal_address(&other)),
+        2006,
+    );
+
+    world.wait(DAY);
+    world
+        .post_update(&campaign, &budi, "Day 1: the repo is up")
+        .unwrap();
+    let journal = world.journal(&campaign);
+    assert_eq!(journal.posted, 1);
+    assert_eq!(journal.recent.len(), 1);
+    assert_eq!(journal.recent[0].text, "Day 1: the repo is up");
+    assert_eq!(journal.recent[0].at, world.now());
+
+    // The journal keeps the latest five, oldest first, and counts them all.
+    for day in 2..=7 {
+        world.wait(DAY);
+        world
+            .post_update(&campaign, &budi, &format!("Day {day}"))
+            .unwrap();
+    }
+    let journal = world.journal(&campaign);
+    assert_eq!(journal.posted, 7);
+    assert_eq!(
+        journal
+            .recent
+            .iter()
+            .map(|update| update.text.as_str())
+            .collect::<Vec<_>>(),
+        ["Day 3", "Day 4", "Day 5", "Day 6", "Day 7"]
+    );
+    assert!(journal
+        .recent
+        .windows(2)
+        .all(|pair| pair[0].at < pair[1].at));
+
+    // Posting moves no money and changes nothing about the campaign.
+    let before = world.campaign(&campaign);
+    let vault = world.balance(&campaign);
+    world.wait(DAY);
+    world
+        .post_update(&campaign, &budi, &"x".repeat(200))
+        .unwrap();
+    let after = world.campaign(&campaign);
+    assert_eq!(world.balance(&campaign), vault);
+    assert_eq!(
+        (
+            after.status,
+            after.backers,
+            after.brakes,
+            after.creator_withdrawn
+        ),
+        (
+            before.status,
+            before.backers,
+            before.brakes,
+            before.creator_withdrawn
+        )
+    );
+
+    // The creator can still speak once the campaign is over, for instance to say where the
+    // result is, and the other campaign's journal was never touched.
+    world.wait(14 * DAY);
+    world
+        .post_update(&campaign, &budi, "Shipped: https://example.com/budi/v1")
+        .unwrap();
+    assert_eq!(world.journal(&campaign).posted, 9);
+    assert!(!world.exists(&journal_address(&other)));
+}

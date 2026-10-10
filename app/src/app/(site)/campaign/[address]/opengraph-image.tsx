@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 import { campaignImage, OG_SIZE, siteImage } from "@/lib/og";
 import { campaignPreview } from "@/lib/server/preview";
 
-export const alt = "A campaign on Tanda Jadi";
+export const alt = "A campaign on Earnest";
 export const size = OG_SIZE;
 export const contentType = "image/png";
 
