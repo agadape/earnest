@@ -11,6 +11,7 @@
     "setup": "tsx scripts/setup.ts",
     "faucet": "tsx scripts/faucet.ts",
     "demo": "tsx scripts/demo.ts",
+    "stage": "tsx scripts/stage.ts",
     "keeper": "tsx scripts/keeper.ts"
   },
   "dependencies": {

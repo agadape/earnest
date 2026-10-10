@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
-import { Bar, buttonClass, Notice, StatusBadge } from "@/components/ui";
+import { Bar, Button, buttonClass, Notice, StatusBadge } from "@/components/ui";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT, RPC_URL } from "@/lib/env";
 import { firstFew, formatDuration, plural, shortAddress, usd } from "@/lib/format";
@@ -44,6 +44,44 @@ export function CampaignList() {
       </Notice>
     );
   }
+
+  // What can still be joined comes first. What has ended stays on the page: it is the record of
+  // how campaigns here actually turned out.
+  const isOpen = (campaign: Campaign) => {
+    const status = statusAt(campaign, now);
+    return status === "funding" || status === "building";
+  };
+  const open = campaigns.filter(isOpen);
+  const ended = campaigns.filter((campaign) => !isOpen(campaign));
+
+  return (
+    <div className="space-y-10">
+      {open.length > 0 ? (
+        <Cards campaigns={open} now={now} />
+      ) : (
+        <p className="text-sm leading-6 text-stone-600">
+          No campaign is open right now.{" "}
+          <Link href="/new" className="font-medium text-accent-ink underline underline-offset-2">
+            Start one
+          </Link>
+          .
+        </p>
+      )}
+      {ended.length > 0 && (
+        <section aria-labelledby="ended-title">
+          <h3 id="ended-title" className="text-sm font-medium text-stone-500">
+            Ended
+          </h3>
+          <div className="mt-4">
+            <EndedCards campaigns={ended} now={now} />
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function Cards({ campaigns, now }: { campaigns: Campaign[]; now: number }) {
   return (
     <ul className="grid gap-4 sm:grid-cols-2">
       {campaigns.map((campaign) => (
@@ -52,6 +90,24 @@ export function CampaignList() {
         </li>
       ))}
     </ul>
+  );
+}
+
+const ENDED_SHOWN = 4;
+
+/** The latest few, with the rest one click away. */
+function EndedCards({ campaigns, now }: { campaigns: Campaign[]; now: number }) {
+  const [all, setAll] = useState(false);
+  const hidden = campaigns.length - ENDED_SHOWN;
+  return (
+    <>
+      <Cards campaigns={all ? campaigns : campaigns.slice(0, ENDED_SHOWN)} now={now} />
+      {hidden > 0 && !all && (
+        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAll(true)}>
+          Show {hidden} more
+        </Button>
+      )}
+    </>
   );
 }
 

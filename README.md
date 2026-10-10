@@ -93,12 +93,19 @@ cd app && npm install          # terminal 2
 npm run setup                  # config + a demo token standing in for USDC, writes .env.local
 npm run demo                   # two scripted campaigns: one fills and is braked, one fails
 npm run dev                    # the web app on http://localhost:3000
+npm run stage                  # three campaigns one step short of their ending, for a walkthrough
 npm run faucet -- <address>    # demo dollars for your own wallet
 npm run keeper                 # optional: a bot that returns pledges and sends payouts by itself
 ```
 
 To try the app without a wallet extension, add `NEXT_PUBLIC_DEMO_WALLET=1` to `app/.env.local`.
 It offers a play-money wallet kept in the browser and a button that hands out demo dollars.
+
+`npm run stage` is the quickest way to see everything from one browser. It opens three campaigns
+and plays every backer but you: one where you take a bonus seat and the deadline passes about two
+minutes later, one with a seat on offer and three sales already on record, and one that is a
+seat short, where two backers pull the brake once the build is running and yours decides it.
+Leave it running while you click through; it prints the three links.
 
 The web app's server also returns money by itself: when it holds a key (`FAUCET_SECRET_KEY`, or
 `app/.keys/faucet.json` in development), a campaign page asks it to send the refunds the moment
