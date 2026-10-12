@@ -25,7 +25,10 @@ export default function Catalog() {
   return (
     <div className="space-y-12 sm:space-y-16">
       <section className="max-w-2xl">
-        <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+        <p className="font-mono text-xs uppercase tracking-widest text-stone-500">
+          Catalog · every exhibit in the museum, as a list
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
           Put down a deposit before it&apos;s built. If too few people join, you get it back
           plus a bonus.
         </h1>

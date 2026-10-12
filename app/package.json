@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/lib/museum/plan.test.ts",
     "setup": "tsx scripts/setup.ts",
     "faucet": "tsx scripts/faucet.ts",
     "demo": "tsx scripts/demo.ts",

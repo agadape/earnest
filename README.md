@@ -6,6 +6,11 @@ Pre-orders that pay the buyer back **with a bonus** when too few people join.
 something. The Indonesian for it is *tanda jadi*, the name this project started under and the
 one its program and code still carry.
 
+The front page is a museum of things that almost existed: every campaign is an exhibit in a
+small building you can walk through, and opening one shows the campaign beside the floor.
+The same campaigns are listed at `/catalog`. How the museum is built is in
+[docs/museum.md](docs/museum.md).
+
 ## The idea in one story
 
 Budi wants to build a tool for developers. It will take him two weeks and he does not know
@@ -67,6 +72,8 @@ programs/tanda-jadi/        Anchor program (Rust)
   tests/lifecycle.rs        end-to-end tests against the compiled program (LiteSVM)
 app/                        Next.js web app, TypeScript client and scripts
   src/lib/tanda-jadi/       client: addresses, account readers, instruction builders, money helpers
+  src/lib/museum/           the museum's floor plan and the rule that hangs campaigns in rooms
+  src/components/museum/    the three.js scene and the page laid over it
   scripts/                  setup, faucet and the scripted demo
 scripts/                    build helpers
 ```
@@ -78,6 +85,7 @@ to live in WSL; see <https://solana.com/docs/intro/installation>.
 
 ```sh
 make test          # build the program, then run unit and end-to-end tests
+cd app && npm test # the museum's hanging rules
 ```
 
 `make build` passes `--arch v0 --tools-version v1.52` to `anchor build`. Anchor 1.2 compiles to

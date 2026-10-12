@@ -3,11 +3,13 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { Status } from "@/lib/tanda-jadi";
 
 const BUTTON_BASE =
-  "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed";
+  "inline-flex items-center justify-center gap-2 rounded-sm font-medium transition-colors disabled:cursor-not-allowed";
 
 const BUTTON_VARIANTS = {
-  primary:
-    "bg-accent text-white hover:bg-accent-strong disabled:bg-stone-200 disabled:text-stone-500",
+  // The museum's own pair: its concrete and its one signal colour.
+  primary: "bg-carbon text-lime hover:bg-black disabled:bg-stone-300 disabled:text-stone-500",
+  // The same pair turned round, for buttons that sit on the dark header.
+  signal: "bg-lime text-carbon hover:bg-white disabled:bg-stone-500 disabled:text-stone-300",
   secondary:
     "border border-stone-300 bg-white text-stone-900 hover:border-stone-400 hover:bg-stone-50 disabled:border-stone-200 disabled:bg-stone-50 disabled:text-stone-400",
   quiet: "text-accent underline hover:text-accent-strong disabled:text-stone-400",
@@ -65,7 +67,7 @@ export function Button({
 
 export function Card({ className = "", children }: { className?: string; children: ReactNode }) {
   return (
-    <section className={`rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 ${className}`}>
+    <section className={`rounded-md border border-stone-300 bg-white p-5 sm:p-6 ${className}`}>
       {children}
     </section>
   );
@@ -81,7 +83,7 @@ const STATUS_LABELS: Record<Status, string> = {
 
 const STATUS_STYLES: Record<Status, string> = {
   funding: "border-accent-line bg-accent-soft text-accent-ink",
-  building: "border-accent bg-accent text-white",
+  building: "border-carbon bg-carbon text-lime",
   failed: "border-stone-300 bg-stone-100 text-stone-700",
   braked: "border-stone-300 bg-stone-100 text-stone-700",
   completed: "border-stone-800 bg-stone-800 text-white",
@@ -90,7 +92,7 @@ const STATUS_STYLES: Record<Status, string> = {
 export function StatusBadge({ status }: { status: Status }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}
+      className={`inline-flex shrink-0 items-center rounded-sm border px-2 py-0.5 font-mono text-[11px] font-medium uppercase tracking-wider ${STATUS_STYLES[status]}`}
     >
       {STATUS_LABELS[status]}
     </span>
@@ -109,7 +111,9 @@ export function Tag({
       ? "border-accent-line bg-accent-soft text-accent-ink"
       : "border-stone-200 bg-stone-50 text-stone-600";
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${style}`}>
+    <span
+      className={`inline-flex items-center rounded-sm border px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide ${style}`}
+    >
       {children}
     </span>
   );

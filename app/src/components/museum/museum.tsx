@@ -70,6 +70,8 @@ export function Museum() {
   const [room, setRoom] = useState<RoomId>("unmade");
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // The plaque at the door: what this place is, for someone who has never heard of it.
+  const [atDoor, setAtDoor] = useState(true);
 
   const select = useCallback((id: string | null) => {
     setSelected(id);
@@ -149,6 +151,7 @@ export function Museum() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && selected) select(null);
+      else if (event.key === "Escape") setAtDoor(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -221,10 +224,10 @@ export function Museum() {
             Room {here.code} · {museum ? museum.counts[room] : "…"}{" "}
             {museum?.counts[room] === 1 ? "exhibit" : "exhibits"}
           </p>
-          <h1 className="mt-1 text-3xl font-semibold uppercase leading-none tracking-tight sm:text-5xl">
+          <h1 className="mt-1 text-2xl font-semibold uppercase leading-none tracking-tight sm:text-5xl">
             {here.name}
           </h1>
-          <p className="mt-3 max-w-xs text-sm leading-6 text-paper/75">{here.blurb}</p>
+          <p className="mt-3 hidden max-w-xs text-sm leading-6 text-paper/75 sm:block">{here.blurb}</p>
 
           {museum && inRoom.length === 0 && (
             <p className="mt-4 border-l-2 border-machine pl-3 text-sm text-paper/75">{here.empty}</p>
@@ -235,7 +238,7 @@ export function Museum() {
                 Exhibits in this room <span className="group-open:hidden">+</span>
                 <span className="hidden group-open:inline">−</span>
               </summary>
-              <ol className="mt-2 max-h-[34vh] space-y-1 overflow-y-auto pr-1">
+              <ol className="mt-2 max-h-[19vh] space-y-1 overflow-y-auto bg-carbon/60 pr-1 sm:max-h-[34vh]">
                 {inRoom.map((exhibit) => (
                   <li key={exhibit.id}>
                     <button
@@ -278,14 +281,14 @@ export function Museum() {
         <div className={`flex flex-wrap items-end justify-between gap-3 ${selected ? "hidden lg:flex" : ""}`}>
           <nav aria-label="Rooms" className="pointer-events-auto">
             <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Directory</p>
-            <ul className="mt-1.5 flex flex-wrap gap-1.5">
+            <ul className="mt-1.5 flex max-w-[calc(100vw-2rem)] gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
               {ROOMS.map((entry) => (
                 <li key={entry.id}>
                   <button
                     type="button"
                     aria-current={entry.id === room ? "true" : undefined}
                     onClick={() => scene.current?.focusRoom(entry.id)}
-                    className={`flex h-9 items-center gap-2 border px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-lime ${
+                    className={`flex h-9 shrink-0 items-center gap-2 whitespace-nowrap border px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-lime ${
                       entry.id === room
                         ? "border-lime bg-lime text-carbon"
                         : "border-paper/30 bg-carbon/80 text-paper hover:border-paper"
@@ -303,13 +306,13 @@ export function Museum() {
                 <button
                   type="button"
                   onClick={() => scene.current?.overview()}
-                  className="flex h-9 items-center border border-paper/30 bg-carbon/80 px-3 text-sm text-paper transition-colors hover:border-paper focus-visible:outline-2 focus-visible:outline-lime"
+                  className="flex h-9 shrink-0 items-center whitespace-nowrap border border-paper/30 bg-carbon/80 px-3 text-sm text-paper transition-colors hover:border-paper focus-visible:outline-2 focus-visible:outline-lime"
                 >
                   Whole building
                 </button>
               </li>
             </ul>
-            <p className="mt-2 max-w-md text-xs leading-5 text-paper/60">
+            <p className="mt-2 hidden max-w-md text-xs leading-5 text-paper/60 sm:block">
               {publicKey ? (
                 <>
                   You are walking the floor as{" "}
@@ -366,6 +369,53 @@ export function Museum() {
           <p className="mt-1 text-xs font-medium">
             {usd(hovered.campaign.price)} a seat · click to open
           </p>
+        </div>
+      )}
+
+      {atDoor && !selected && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-carbon/70 p-4">
+          <section
+            aria-labelledby="door-title"
+            className="w-full max-w-xl border border-carbon bg-paper p-6 text-stone-900 shadow-2xl sm:p-9"
+          >
+            <p className="font-mono text-xs uppercase tracking-widest text-stone-600">
+              Earnest · admission free
+            </p>
+            <h1
+              id="door-title"
+              className="mt-3 text-3xl font-semibold uppercase leading-[0.95] tracking-tight sm:text-5xl"
+            >
+              Museum of things that almost existed
+            </h1>
+            <p className="mt-4 text-lg leading-7">
+              A museum for the things the world hasn&apos;t made yet.
+            </p>
+            <p className="mt-3 text-sm leading-6 text-stone-700">
+              Every exhibit is a pre-order for something that does not exist yet. Take a seat by
+              putting down a deposit. If enough people join, it gets built. If too few do, you get
+              your deposit back, and the earliest backers get a bonus from a bond its creator
+              locked.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setAtDoor(false)}
+                className="h-11 bg-carbon px-6 text-sm font-medium text-lime hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-carbon"
+              >
+                Walk in
+              </button>
+              <Link
+                href="/catalog"
+                className="flex h-11 items-center border border-stone-400 px-5 text-sm font-medium hover:border-stone-900"
+              >
+                Read the catalog instead
+              </Link>
+            </div>
+            <p className="mt-5 border-t border-stone-300 pt-3 font-mono text-[11px] uppercase tracking-wider text-stone-500">
+              Play money on a test network · nothing here is audited
+            </p>
+          </section>
         </div>
       )}
 

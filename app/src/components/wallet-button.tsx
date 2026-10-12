@@ -131,7 +131,7 @@ export function WalletButton() {
 
   if (!publicKey) {
     return (
-      <Button size="sm" busy={connecting} onClick={openConnect}>
+      <Button variant="signal" size="sm" busy={connecting} onClick={openConnect}>
         {connecting ? "Connecting" : "Connect"}
       </Button>
     );
@@ -179,14 +179,14 @@ function WalletMenu({ address }: { address: string }) {
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-medium hover:border-stone-400"
+        className="inline-flex h-9 items-center gap-2 rounded-sm border border-paper/30 bg-paper px-3 text-sm font-medium text-stone-900 hover:border-lime"
       >
         {demo && <Tag tone="accent">Demo</Tag>}
         <span className="font-mono text-[13px]">{shortAddress(address)}</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-stone-200 bg-white p-4 text-sm shadow-xl shadow-stone-900/10">
+        <div className="absolute right-0 z-40 mt-2 w-72 rounded-md border border-stone-300 bg-white p-4 text-sm text-stone-900 shadow-xl shadow-stone-900/10">
           <p className="font-medium">
             {demo ? "Demo wallet — play money" : (wallet?.adapter.name ?? "Wallet")}
           </p>
