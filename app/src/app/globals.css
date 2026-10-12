@@ -10,7 +10,7 @@
   --color-paper: #f0efe7;
   /* The museum: its concrete, its one signal colour, and the grey of its fittings. */
   --color-carbon: #171917;
-  --color-toy-ink: #3b2f22;
+  --color-toy-ink: #171917;
   --color-lime: #d8f59a;
   --color-machine: #777b73;
   --color-signal: #ff6338;
@@ -244,21 +244,36 @@ dialog::backdrop {
 }
 
 /*
- * The close look at one exhibit is a bright gallery, in the manner of a management game: a
- * painted wall over a wooden floor, cards with thick outlines that sit a little off the wall,
- * and buttons that go down when pressed.
+ * The close look at one exhibit, and a maker's shelf, are rooms of the same museum: its stone
+ * wall with the darker course at the foot, over its wooden floor. The cards are the museum's
+ * paper with its carbon for an outline, and the one bright colour is its lime.
  */
 .gallery-ground {
+  /* How far down the window the wall meets the floor. */
+  --floor: 70%;
   background:
-        linear-gradient(to bottom, transparent 0, transparent calc(70% - 14px), #8a5a3a calc(70% - 14px), #8a5a3a 70%, transparent 70%),
-    repeating-linear-gradient(90deg, rgb(59 47 34 / 0.07) 0 2px, transparent 2px 120px),
-    linear-gradient(to bottom, #bfe3ee 0, #e3f1ea 70%, #d7ae78 70%, #c39561 100%);
+    linear-gradient(
+      to bottom,
+      transparent calc(var(--floor) - 34px),
+      #b9a57f calc(var(--floor) - 34px),
+      #b9a57f calc(var(--floor) - 6px),
+      #6b4a32 calc(var(--floor) - 6px),
+      #6b4a32 var(--floor),
+      transparent var(--floor)
+    ),
+    repeating-linear-gradient(90deg, rgb(107 74 50 / 0.3) 0 2px, transparent 2px 96px) bottom / 100%
+      calc(100% - var(--floor)) no-repeat,
+    linear-gradient(to bottom, #f1e8d0 0, #e0d0b0 var(--floor), #c58f58 var(--floor), #b17d49 100%);
+}
+/* A maker's shelf stands higher up the window, so the floor comes up to meet it. */
+.gallery-ground-high {
+  --floor: 49%;
 }
 .toy-card {
-  border: 3px solid var(--color-toy-ink);
-  border-radius: 18px;
-  background: #fffaf0;
-  box-shadow: 0 6px 0 var(--color-toy-ink);
+  border: 2px solid var(--color-carbon);
+  border-radius: 12px;
+  background: #f7f5ec;
+  box-shadow: 0 4px 0 var(--color-carbon);
 }
 .toy-button {
   display: inline-flex;
@@ -267,23 +282,23 @@ dialog::backdrop {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border: 3px solid var(--color-toy-ink);
-  border-radius: 14px;
-  background: #fffaf0;
+  border: 2px solid var(--color-carbon);
+  border-radius: 10px;
+  background: #f7f5ec;
   padding: 0 1.1rem;
   font-size: 0.875rem;
-  font-weight: 800;
-  color: var(--color-toy-ink);
-  box-shadow: 0 4px 0 var(--color-toy-ink);
+  font-weight: 700;
+  color: var(--color-carbon);
+  box-shadow: 0 3px 0 var(--color-carbon);
   transition: transform 80ms, box-shadow 80ms, background-color 120ms;
 }
 .toy-button:hover,
 .toy-button:focus-visible {
-  background: #fff3d6;
+  background: #e6e3d5;
 }
 .toy-button:active {
-  transform: translateY(3px);
-  box-shadow: 0 1px 0 var(--color-toy-ink);
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--color-carbon);
 }
 .toy-button:disabled {
   opacity: 0.55;
@@ -296,7 +311,7 @@ dialog::backdrop {
 .toy-button-on,
 .toy-button-on:hover,
 .toy-button-on:focus-visible {
-  background: #b8e86a;
+  background: var(--color-lime);
 }
 /* The campaign shows its own title on the sign above; it need not say it twice. */
 .gallery h1 {

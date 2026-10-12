@@ -257,17 +257,17 @@ export function CreatorRecord({
     <p className="toy-card mx-auto mt-10 w-max max-w-[90%] px-5 py-4 text-sm font-bold">{text}</p>
   );
   const ribbon: Record<Status, string> = {
-    funding: "bg-[#b8e86a]",
+    funding: "bg-lime",
     building: "bg-[#ffcf5c]",
-    completed: "bg-[#8ed1f0]",
-    failed: "bg-[#d8d0bd]",
-    braked: "bg-[#ff9a7a]",
+    completed: "bg-white",
+    failed: "bg-[#cfc7b4]",
+    braked: "bg-signal",
   };
 
   return (
     <section
       aria-label="Creator record"
-      className="gallery-ground absolute inset-0 z-20 flex flex-col overflow-y-auto text-toy-ink lg:overflow-hidden"
+      className="gallery-ground gallery-ground-high absolute inset-0 z-20 flex flex-col overflow-y-auto text-toy-ink lg:overflow-hidden"
     >
       <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pt-4 sm:px-6 sm:pt-5">
         <div className="toy-card min-w-0 max-w-full px-5 py-3">
@@ -323,7 +323,7 @@ export function CreatorRecord({
                         onBlur={() => shelf.current?.mark(-1)}
                         className="toy-card block h-full w-full overflow-hidden text-left transition-transform hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:outline-none"
                       >
-                        <span className={`block border-b-[3px] border-toy-ink px-4 py-1.5 text-xs font-extrabold uppercase tracking-wide ${ribbon[status]}`}>
+                        <span className={`block border-b-2 border-toy-ink px-4 py-1.5 text-xs font-extrabold uppercase tracking-wide ${ribbon[status]}`}>
                           {STATUS_WORDS[status]}
                         </span>
                         <span className="block px-4 py-3">
@@ -341,7 +341,7 @@ export function CreatorRecord({
               </ol>
             )}
 
-            <p className="toy-card mt-5 max-w-4xl bg-[#fff3d6] px-5 py-3 text-sm font-medium leading-6">
+            <p className="toy-card mt-5 max-w-4xl bg-[#e6e3d5] px-5 py-3 text-sm font-medium leading-6">
               All of this is read from the campaigns this wallet opened. A campaign that didn&apos;t fill is
               not a black mark: the maker asked before building, and paid the bonus they promised. Two
               things this cannot tell you: a maker can start over with a new wallet, so an empty shelf

@@ -37,11 +37,11 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 
 // The colour of the ribbon over an exhibit's card, by the state it is in.
 const RIBBON: Record<Exhibit["status"], string> = {
-  funding: "bg-[#b8e86a]",
+  funding: "bg-lime",
   building: "bg-[#ffcf5c]",
-  completed: "bg-[#8ed1f0]",
-  failed: "bg-[#d8d0bd]",
-  braked: "bg-[#ff9a7a]",
+  completed: "bg-white",
+  failed: "bg-[#cfc7b4]",
+  braked: "bg-signal",
 };
 
 /** The one date that matters for the state an exhibit is in. */
@@ -202,7 +202,7 @@ export function Chamber({
 
       {exhibit && campaign && (
         <div className="toy-card thin-scroll mx-4 shrink-0 overflow-hidden sm:mx-6 lg:absolute lg:bottom-24 lg:left-6 lg:top-32 lg:mx-0 lg:w-64 lg:overflow-y-auto">
-          <p className={`border-b-[3px] border-toy-ink px-4 py-2 text-sm font-extrabold uppercase tracking-wide ${RIBBON[exhibit.status]}`}>
+          <p className={`border-b-2 border-toy-ink px-4 py-2 text-sm font-extrabold uppercase tracking-wide ${RIBBON[exhibit.status]}`}>
             {STATUS_WORDS[exhibit.status]}
           </p>
           <div className="space-y-2 p-3">
@@ -216,7 +216,7 @@ export function Chamber({
                   <span
                     key={index}
                     className={`h-3.5 w-3.5 rounded-[4px] border-2 border-toy-ink ${
-                      index < Math.round((campaign.backers * seats) / campaign.targetBackers) ? "bg-[#b8e86a]" : "bg-white"
+                      index < Math.round((campaign.backers * seats) / campaign.targetBackers) ? "bg-lime" : "bg-white"
                     }`}
                   />
                 ))}
@@ -243,7 +243,7 @@ export function Chamber({
               </div>
             </dl>
           </div>
-          <div className="border-t-[3px] border-toy-ink bg-[#fff3d6] px-3 py-3">
+          <div className="border-t-2 border-toy-ink bg-[#e6e3d5] px-3 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">Reactions</p>
             <div className="mt-1.5 flex gap-2">
               {REACTIONS.map(({ kind, sign, label }) => (
@@ -269,7 +269,7 @@ export function Chamber({
             </p>
           </div>
           {onPlace && !hasRoom && (
-            <div className="border-t-[3px] border-toy-ink p-3">
+            <div className="border-t-2 border-toy-ink p-3">
               <button type="button" onClick={onPlace} className="toy-button toy-button-on w-full">
                 Build it a room
               </button>
@@ -282,7 +282,7 @@ export function Chamber({
       )}
 
       <div className="toy-card mx-4 mt-4 flex shrink-0 flex-col overflow-hidden sm:mx-6 lg:absolute lg:bottom-20 lg:right-6 lg:top-5 lg:mx-0 lg:mt-0 lg:w-[31rem]">
-        <div className="shrink-0 border-b-[3px] border-toy-ink bg-[#fff3d6] px-5 py-3">
+        <div className="shrink-0 border-b-2 border-toy-ink bg-[#e6e3d5] px-5 py-3">
           <p className="text-sm font-extrabold uppercase tracking-wide">Take a seat</p>
           <p className="mt-0.5 text-xs leading-5 text-toy-ink/65">
             What you can do here, and what each ending pays. The object is a stand-in: campaigns carry no pictures.
@@ -293,7 +293,7 @@ export function Chamber({
         </div>
       </div>
 
-      <div className="sticky bottom-0 mt-4 flex shrink-0 items-center justify-between gap-3 bg-[#fff8e7]/95 px-4 py-3 sm:px-6 lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:bg-transparent lg:py-4">
+      <div className="sticky bottom-0 mt-4 flex shrink-0 items-center justify-between gap-3 bg-paper/95 px-4 py-3 sm:px-6 lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:bg-transparent lg:py-4">
         <button type="button" onClick={onBack} className="toy-button">
           ← Back <span className="hidden text-[10px] font-bold opacity-50 sm:inline">esc</span>
         </button>
