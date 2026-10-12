@@ -203,6 +203,17 @@ Rooms stay on chain.
 
 Stated plainly, because a reader will find them anyway.
 
+- **It is built for things a backer gets, not for things everyone gets.** A seat is a pre-order.
+  If what is built is free for all once it exists, as open-source tools are, anyone can wait for
+  others to fill the seats and use it anyway. The bonus for the earliest backers pulls against
+  that but does not remove it. Several of the campaigns on devnet are open-source tools, which
+  is the weakest fit; a seat should come with something only backers get.
+- **The creator has to lock money before the first backer arrives.** The bond is small beside
+  what is raised (the bonus for each early seat, times the early seats), and the creator sets
+  it, but someone with nothing to lock cannot ask at all. Nobody else can post a bond for them.
+- **Nothing curates what is opened.** Anyone with the bond can start a campaign for anything,
+  and the museum will show it. The bond makes spam cost something and the record shows what a
+  wallet did before; neither is moderation, and there is no way to take an exhibit down.
 - **A creator can pledge to their own campaign.** Filling the gap to reach the target only costs
   them the fee, so the number of backers proves nothing to an outsider. Taking the bonus seats
   themselves makes their bond free again, but then real backers see that no bonus seat is left
