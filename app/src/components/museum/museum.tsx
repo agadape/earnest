@@ -252,7 +252,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   useEffect(() => {
     if (!sceneId) return;
     // The room's name and its list sit over the left of the floor on a wide window.
-    scene.current?.setInsets(intro === null && window.matchMedia(WIDE).matches ? 340 : 0, 0, 0);
+    // During the introduction the lower black bar is the taller one; what is looked at sits above it.
+    scene.current?.setInsets(intro === null && window.matchMedia(WIDE).matches ? 340 : 0, 0, intro === null ? 0 : 110);
     scene.current?.setSelected(selected);
     // The chamber covers the whole floor; there is no point drawing what cannot be seen.
     scene.current?.setPaused(selected !== null);
@@ -353,6 +354,47 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     if (!sceneId || intro === null) return;
     scene.current?.lookAt(SCENES[intro]?.room ?? null);
   }, [sceneId, intro]);
+
+  // While it plays, signposts stand on the floor at what each scene talks about. They belong
+  // to the introduction alone and go when it ends.
+  const signposts = useMemo(() => {
+    if (intro === null) return "[]";
+    const first = (id: RoomId) => museum?.exhibits.find((exhibit) => exhibit.room === id);
+    const centre = (id: RoomId) => ROOMS.find((entry) => entry.id === id) ?? ROOMS[0];
+    const at = (id: RoomId, text: string) => {
+      const spot = first(id) ?? centre(id);
+      return { x: spot.x, z: spot.z, text };
+    };
+    const idea = first("unmade");
+    const scenes: { x: number; z: number; text: string; high?: boolean }[][] = [
+      [
+        { ...centre("unmade"), text: "Ideas waiting", high: true },
+        { ...centre("workshop"), text: "Being made", high: true },
+        { ...centre("realized"), text: "Made", high: true },
+        { ...centre("almost"), text: "Didn't make it", high: true },
+        { ...centre("annex"), text: "Makers' rooms", high: true },
+      ].map(({ x, z, text, high }) => ({ x, z, text, high })),
+      idea
+        ? [
+            { x: idea.x, z: idea.z, text: "An idea", high: true },
+            { x: idea.x, z: idea.z + 1.3, text: "Its seats" },
+          ]
+        : [at("unmade", "Ideas wait here")],
+      [at("workshop", "Being made")],
+      [at("almost", "Deposits went back")],
+      [at("annex", first("annex") ? "A maker's room" : "Makers build here")],
+      [
+        { x: STATIONS[0].x, z: STATIONS[0].z, text: "All ideas", high: true },
+        { x: STATIONS[1].x, z: STATIONS[1].z, text: "Start your own", high: true },
+      ],
+    ];
+    return JSON.stringify(scenes[intro] ?? []);
+    // The signature stands for the exhibits: the signposts move only when they do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intro, signature]);
+  useEffect(() => {
+    if (sceneId) scene.current?.setMarks(JSON.parse(signposts));
+  }, [sceneId, signposts]);
 
   // The introduction plays by itself the first time a wallet connects in this browser.
   const connected = publicKey !== null;

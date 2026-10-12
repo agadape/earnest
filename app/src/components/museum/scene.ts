@@ -140,6 +140,8 @@ export class MuseumScene {
   private strain = 0;
   // Whether another visitor is still on the way to where they were last reported.
   private astir = false;
+  // Signposts stood on the floor while the introduction plays: this is what is being talked about.
+  private marks: { x: number; y: number; z: number; tag: HTMLDivElement }[] = [];
   // Wallets that visited before, strolling the rooms while their owners are away.
   private readonly wanderers = new Map<string, Wanderer>();
   private eased = 0;
@@ -626,6 +628,24 @@ export class MuseumScene {
     // The visitor goes too, and stops just inside the room.
     this.walkTo({ x: room.x + 1.2, z: room.z + room.depth / 2 - 2.2 });
     this.say(id);
+  }
+
+  /**
+   * Stands signposts on the floor, each pointing down at a spot with a few words, and takes
+   * away the ones that stood before. An empty list clears them.
+   */
+  setMarks(list: { x: number; z: number; text: string; high?: boolean }[]) {
+    for (const mark of this.marks) mark.tag.remove();
+    this.marks = list.map((entry) => {
+      const tag = document.createElement("div");
+      tag.className = "museum-mark absolute left-0 top-0";
+      const words = document.createElement("span");
+      words.textContent = entry.text;
+      tag.appendChild(words);
+      this.labels.appendChild(tag);
+      return { x: entry.x, y: entry.high ? 3.6 : 2.4, z: entry.z, tag };
+    });
+    this.dirty = true;
   }
 
   /**
@@ -1184,14 +1204,20 @@ export class MuseumScene {
     }
     STATIONS.forEach((station, index) => {
       const tag = this.stationTags[index];
-      const shown = readable && !this.selected && this.room === "unmade";
+      const shown = readable && !this.selected && this.room === "unmade" && this.marks.length === 0;
       tag.classList.toggle("hidden", !shown);
       if (!shown) return;
       const at = this.project(station.x, 2.3, station.z);
       tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     });
+    for (const mark of this.marks) {
+      const at = this.project(mark.x, mark.y, mark.z);
+      mark.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
+    }
+    // With signposts up, the usual small labels would only be in their way.
+    const quiet = this.marks.length > 0;
     for (const wanderer of this.wanderers.values()) {
-      const shown = readable && !this.selected;
+      const shown = readable && !this.selected && !quiet;
       wanderer.tag.classList.toggle("hidden", !shown);
       if (!shown) continue;
       const at = this.project(wanderer.figure.position.x, 1.0, wanderer.figure.position.z);

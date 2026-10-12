@@ -16,35 +16,12 @@ export const SCENES: {
   /** A second, quieter line. */
   aside?: string;
 }[] = [
-  {
-    line: "Welcome to the museum of things that don't exist yet.",
-    aside: "Every object in it is an idea somebody wants to build.",
-  },
-  {
-    room: "unmade",
-    line: "An idea waits here until enough people say “I want one”.",
-    aside: "You say it by taking a seat: you put down a deposit.",
-  },
-  {
-    room: "workshop",
-    line: "If every seat is taken, it gets built.",
-    aside: "The creator is paid in parts while they build, and the backers can stop it if the creator vanishes.",
-  },
-  {
-    room: "almost",
-    line: "If too few people join, everyone gets their deposit back.",
-    aside: "The earliest backers also get a bonus, paid by the creator, who locked it up before asking.",
-  },
-  {
-    room: "annex",
-    line: "Creators can build their idea a room of its own.",
-    aside: "And you can react to the ideas you like. A crowd gathers round the popular ones.",
-  },
-  {
-    room: "unmade",
-    line: "That's all there is to it. What would you like to do first?",
-    aside: "This is a demo on a test network with play money. Nothing here has been audited.",
-  },
+  { line: "This is a museum of ideas.", aside: "Things people want to make, but haven't yet." },
+  { room: "unmade", line: "Like an idea? Take a seat.", aside: "A seat costs a small deposit." },
+  { room: "workshop", line: "All seats taken? It gets made." },
+  { room: "almost", line: "Not enough people? You get your deposit back.", aside: "The first ones in get a bonus too." },
+  { room: "annex", line: "Makers can build their own room here." },
+  { room: "unmade", line: "Ready? Pick where to start.", aside: "Demo only: play money, not audited." },
 ];
 
 export function Cutscene({

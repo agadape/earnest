@@ -201,3 +201,43 @@ dialog::backdrop {
     animation: none;
   }
 }
+
+/* A signpost of the introduction: a few words in a box, and a stem down to the spot it means. */
+.museum-mark {
+  padding-bottom: 26px;
+  pointer-events: none;
+}
+.museum-mark > span {
+  display: block;
+  white-space: nowrap;
+  border: 2px solid var(--color-carbon);
+  background: var(--color-lime);
+  padding: 4px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-carbon);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
+  animation: museum-mark 1.6s ease-in-out infinite;
+}
+.museum-mark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 3px;
+  height: 26px;
+  transform: translateX(-50%);
+  background: var(--color-lime);
+  box-shadow: 0 0 0 1px var(--color-carbon);
+}
+@keyframes museum-mark {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .museum-mark > span {
+    animation: none;
+  }
+}
