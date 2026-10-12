@@ -4,6 +4,7 @@
  * beyond which object stands for it and which state it is in.
  */
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
 import type { Look } from "@/lib/museum/plan";
@@ -44,7 +45,13 @@ export class Inspector {
     // A bright gallery: daylight from above, a warm lamp, and a little light back from the floor.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.scene.add(new THREE.HemisphereLight("#f4fbff", "#c9a877", 1.5));
+    // Something for the brass and the glass to reflect: a plain lit room, blurred. It is made
+    // once and costs nothing a frame.
+    const reflections = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = reflections.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.3;
+    reflections.dispose();
+    this.scene.add(new THREE.HemisphereLight("#f4fbff", "#c9a877", 1.3));
     const lamp = new THREE.SpotLight("#fff3da", 55, 14, 0.55, 0.7, 1.4);
     lamp.position.set(-1.8, 5.5, 2.8);
     lamp.castShadow = true;

@@ -623,6 +623,31 @@ export function buildWorld(scene: THREE.Scene) {
     scene.add(tub, shrub);
   }
 
+  // Where a wall meets the floor it is a little darker, the way corners are. A strip along the
+  // inside of every wall, dark at the wall and gone under a metre out.
+  const dusk = document.createElement("canvas");
+  dusk.width = 4;
+  dusk.height = 64;
+  const duskPaint = dusk.getContext("2d") as CanvasRenderingContext2D;
+  const falloff = duskPaint.createLinearGradient(0, 0, 0, 64);
+  falloff.addColorStop(0, "rgba(40,28,16,0.34)");
+  falloff.addColorStop(1, "rgba(40,28,16,0)");
+  duskPaint.fillStyle = falloff;
+  duskPaint.fillRect(0, 0, 4, 64);
+  const corner = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(dusk), transparent: true, depthWrite: false });
+  /** A strip of shade `length` long at a point, its dark edge towards the wall it is turned to. */
+  const shade = (length: number, x: number, z: number, turn: number) => {
+    weld(new THREE.PlaneGeometry(length, 1.1).rotateX(-Math.PI / 2).rotateY(turn).translate(x, 0.016, z), corner, false);
+  };
+  for (const room of ROOMS) {
+    const inX = room.width / 2 - THICK / 2 - 0.55;
+    const inZ = room.depth / 2 - THICK / 2 - 0.55;
+    shade(room.width - THICK, room.x, room.z - inZ, 0);
+    shade(room.width - THICK, room.x, room.z + inZ, Math.PI);
+    shade(room.depth - THICK, room.x - inX, room.z, Math.PI / 2);
+    shade(room.depth - THICK, room.x + inX, room.z, -Math.PI / 2);
+  }
+
   // ----- Dressing -------------------------------------------------------------------------
   // Bunting along the top of the tall walls, on the side that faces into each room. It skips
   // the gateways.

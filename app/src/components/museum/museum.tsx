@@ -624,11 +624,14 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         tabIndex={0}
         role="application"
         aria-label="The museum floor. W, A, S, D or the arrow keys walk; Enter opens what you stand next to; plus and minus zoom. Everything on the floor is also listed next to it."
-        className="absolute inset-0 cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime"
+        className="museum-floor absolute inset-0 cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime"
       />
 
       {/* The corners of the picture fall off a little, the way a photograph's do. */}
       <div aria-hidden className="museum-vignette pointer-events-none absolute inset-0" />
+      {/* The far and the near edge go a little soft, which makes a small world look small. */}
+      <div aria-hidden className="museum-soft museum-soft-far pointer-events-none absolute inset-x-0 top-0" />
+      <div aria-hidden className="museum-soft museum-soft-near pointer-events-none absolute inset-x-0 bottom-0" />
       {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
       <div
         aria-hidden

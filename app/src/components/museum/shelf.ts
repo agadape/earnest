@@ -5,6 +5,7 @@
  * said in words next to it.
  */
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
 import { person } from "@/components/museum/people";
@@ -48,7 +49,13 @@ export class Shelf {
     this.renderer.domElement.style.cursor = "grab";
     host.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.HemisphereLight("#f4fbff", "#c9a877", 1.5));
+    // Something for the brass and the glass to reflect: a plain lit room, blurred. It is made
+    // once and costs nothing a frame.
+    const reflections = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = reflections.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.3;
+    reflections.dispose();
+    this.scene.add(new THREE.HemisphereLight("#f4fbff", "#c9a877", 1.3));
     const lamp = new THREE.DirectionalLight("#fff3da", 2.4);
     lamp.position.set(-3, 7, 5);
     lamp.castShadow = true;

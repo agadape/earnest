@@ -8,6 +8,7 @@
  * carry three.js.
  */
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
@@ -188,7 +189,15 @@ export class MuseumScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
     this.scene.background = new THREE.Color(SKY);
-    this.scene.add(new THREE.HemisphereLight("#eaf6ff", "#8aa26f", 1.25));
+    // A little haze over what is far away, so the wood behind the museum falls back.
+    this.scene.fog = new THREE.Fog("#c4e0b4", 158, 270);
+    // Something for the brass and the glass to reflect: a plain lit room, blurred. It is made
+    // once and costs nothing a frame.
+    const reflections = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = reflections.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.16;
+    reflections.dispose();
+    this.scene.add(new THREE.HemisphereLight("#eaf6ff", "#8aa26f", 1.12));
     const sun = new THREE.DirectionalLight("#fff1d6", 3.1);
     sun.position.set(-4, 26, -10);
     sun.target.position.set(17, 0, 1);

@@ -362,3 +362,27 @@ dialog::backdrop {
     0 0 0 2px var(--color-carbon),
     0 6px 0 var(--color-carbon);
 }
+
+/* The floor's colours are pushed a little, the way a printed picture's are. */
+.museum-floor canvas {
+  filter: saturate(1.12) contrast(1.04);
+}
+/*
+ * A band at the far edge and one at the near edge where the picture goes out of focus, fading
+ * to sharp towards the middle. Where the browser cannot blur what is behind an element, there
+ * is simply no band.
+ */
+.museum-soft {
+  height: 17%;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.museum-soft-far {
+  mask-image: linear-gradient(to bottom, #000, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent);
+}
+.museum-soft-near {
+  height: 13%;
+  mask-image: linear-gradient(to top, #000, transparent);
+  -webkit-mask-image: linear-gradient(to top, #000, transparent);
+}
