@@ -324,7 +324,8 @@ export function PlotPicker({
             <p className="mt-2 text-xs leading-5 text-paper/70">
               Pick a free plot, on the floor or on the plan, and a colour for the floor. You sign
               one transaction; it costs a network fee and moves no money. The first creator to
-              sign for a plot has it, and you can move later.
+              sign for a plot has it, and you can move later. Without a room it stands in the
+              hall its state puts it in.
             </p>
             <div role="group" aria-label="Floor colour" className="mt-3 flex items-center gap-1.5">
               {ROOM_FLOORS.map((color, index) => (
@@ -384,7 +385,7 @@ export function PlotPicker({
                 </button>
               )}
               <button type="button" onClick={onCancel} className="hud-button">
-                Cancel <span className="hidden font-mono text-[10px] opacity-60 sm:inline">esc</span>
+                Not now <span className="hidden font-mono text-[10px] opacity-60 sm:inline">esc</span>
               </button>
             </div>
           </div>

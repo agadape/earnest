@@ -862,9 +862,10 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         <DesignMode
           onOpened={(address, look) => {
             setJustMade((made) => ({ ...made, [address]: look }));
-            select(address);
             // The look was written down with the campaign; read it back.
             noted();
+            // Next comes where it stands: straight into build mode, to pick it a plot.
+            place(address);
           }}
           onClose={() => select(null)}
         />
@@ -887,6 +888,14 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
               : undefined
           }
         />
+      )}
+      {placing && !beingPlaced && !selected && !panel && (
+        <p
+          aria-busy
+          className="absolute inset-x-0 bottom-8 z-20 mx-auto w-max max-w-[90vw] border border-lime bg-carbon px-4 py-2 font-mono text-xs uppercase tracking-widest text-lime"
+        >
+          Your campaign is open. Fetching it to choose its plot…
+        </p>
       )}
       {beingPlaced && !selected && !panel && (
         <PlotPicker
