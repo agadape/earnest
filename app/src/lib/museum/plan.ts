@@ -83,7 +83,8 @@ export const ROOMS: Room[] = [
     z: 14,
     width: 16,
     depth: 12,
-    slots: grid({ x: 0, z: 14 }, [-5.25, -1.75, 1.75, 5.25], [-3.4, 0, 3.4]),
+    // Two blocks either side of a clear aisle that runs in from the door.
+    slots: grid({ x: 0, z: 14 }, [-5.9, -3.3, 3.3, 5.9], [-3.4, 0, 3.4]),
   },
   {
     id: "annex",

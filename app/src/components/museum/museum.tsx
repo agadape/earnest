@@ -25,6 +25,8 @@ type Panel = "board" | "design" | "record";
 const CREATOR = "@creator:";
 // Set in this browser once the introduction has played, so it plays once.
 const INTRO_SEEN = "earnest:intro-seen";
+// Set once the line of controls has been shown.
+const HINTED = "earnest:hinted";
 const PANEL_OF: Record<string, Panel> = { "@board": "board", "@desk": "design" };
 
 /** One line under an exhibit's name: what state it is in, in words, and how full it is. */
@@ -146,6 +148,30 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   // Whether the words about the room are laid over the left of the floor. Folded away, only
   // the room's name is left, and the floor is all picture.
   const [notes, setNotes] = useState(false);
+  // The dock's two small panels, and the line of controls shown to a first-time visitor.
+  const [help, setHelp] = useState(false);
+  const [more, setMore] = useState(false);
+  const [hint, setHint] = useState(false);
+  const dismissHint = useCallback(() => {
+    setHint(false);
+    try {
+      window.localStorage.setItem(HINTED, "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    let seen = true;
+    try {
+      seen = window.localStorage.getItem(HINTED) !== null;
+    } catch {}
+    if (seen) return;
+    // Shown once: it goes after a few seconds, or at the first key or click on the floor.
+    const show = setTimeout(() => setHint(true), 0);
+    const hide = setTimeout(dismissHint, 9000);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
+  }, [dismissHint]);
   // The reminder that one of the visitor's campaigns has no room yet, until they wave it away.
   const [reminded, setReminded] = useState(true);
   // The introduction: which scene it is at, or `null` when it is not playing.
@@ -614,8 +640,6 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const homeless = mine.filter((campaign) => !plots.has(campaign.address.toBase58()));
   const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
   const station = near ? STATIONS.find((entry) => entry.id === near) : undefined;
-  const hudButton =
-    "flex h-9 shrink-0 items-center whitespace-nowrap border border-paper/30 bg-carbon/85 px-3 text-sm text-paper transition-colors hover:border-lime hover:text-lime focus-visible:outline-2 focus-visible:outline-lime";
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-carbon text-paper">
@@ -748,81 +772,118 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
           )}
         </div>
 
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <nav aria-label="Rooms" className="pointer-events-auto">
-            <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Directory</p>
-            <ul className="mt-1.5 flex max-w-[calc(100vw-2rem)] gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
-              {ROOMS.map((entry) => (
-                <li key={entry.id}>
-                  <button
-                    type="button"
-                    aria-current={entry.id === room ? "true" : undefined}
-                    onClick={() => scene.current?.focusRoom(entry.id)}
-                    className={`flex h-9 shrink-0 items-center gap-2 whitespace-nowrap border px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-lime ${
-                      entry.id === room
-                        ? "border-lime bg-lime text-carbon"
-                        : "border-paper/30 bg-carbon/85 text-paper hover:border-paper"
-                    }`}
-                  >
-                    <span className="font-mono text-xs">{entry.code}</span>
-                    {entry.name.replace(/^The /, "")}
-                    <span className="font-mono text-xs opacity-70">
-                      {museum ? museum.counts[entry.id] : "·"}
-                    </span>
-                  </button>
-                </li>
-              ))}
-              <li>
-                <button type="button" onClick={() => scene.current?.overview()} className={hudButton}>
-                  Whole building
-                </button>
-              </li>
-              <li>
+        {/* One dock for everything: the rooms, the whole building, zoom, help, and the rest. */}
+        <div className="flex flex-col items-center gap-2">
+          {hint && (
+            <p className="museum-dock pointer-events-auto flex items-center gap-3 px-4 py-2 text-xs text-paper/90">
+              W A S D or arrows walk · click the floor · Enter opens · drag to look
+              <button type="button" aria-label="Got it" onClick={dismissHint} className="text-base leading-none text-paper/60 hover:text-lime">
+                ×
+              </button>
+            </p>
+          )}
+          {help && (
+            <div className="museum-dock museum-dock-panel pointer-events-auto max-w-md px-5 py-4 text-xs leading-5 text-paper/85">
+              <p className="text-sm font-semibold text-paper">How to get around</p>
+              <p className="mt-1">
+                W A S D or the arrow keys walk. Click the floor to walk there. Enter, or a click, opens what
+                you stand next to. Drag to look around; plus and minus zoom.
+              </p>
+              <p className="mt-2 text-sm font-semibold text-paper">Who is who</p>
+              <p className="mt-1">
+                <span className="font-semibold text-lime">{here ?? 1} here now.</span> You walk as{" "}
+                <span className="font-semibold text-paper">{name}</span>. A figure with a bright name is another
+                visitor here now. The ones strolling with a faint address are wallets that visited before,
+                not people here now. Figures gathered round an exhibit stand for its reactions, one each up to
+                ten; they are nobody.
+              </p>
+            </div>
+          )}
+          {more && (
+            <div className="museum-dock museum-dock-panel pointer-events-auto flex flex-col p-1.5 text-sm">
+              {(
+                [
+                  ["Campaign board", () => select("@board")],
+                  ["Start a campaign", () => select("@desk")],
+                  ["Replay intro", () => setIntro(0)],
+                ] as const
+              ).map(([label, act]) => (
                 <button
+                  key={label}
                   type="button"
-                  onClick={() => setIntro(0)}
-                  className={`${hudButton} border-lime text-lime`}
+                  onClick={() => {
+                    setMore(false);
+                    act();
+                  }}
+                  className="rounded-lg px-4 py-2 text-left text-paper hover:bg-paper/10 focus-visible:outline-2 focus-visible:outline-lime"
                 >
-                  Replay intro
+                  {label}
                 </button>
-              </li>
-            </ul>
-            <p className={`mt-2 hidden max-w-md text-xs leading-5 text-paper/60 ${notes ? "sm:block" : ""}`}>
-              <span className="font-mono text-lime">{here ?? 1} here now.</span> You walk as{" "}
-              <span className="font-mono text-paper">{name}</span>; a figure with a bright name over
-              it is another visitor here now. The ones strolling with a faint address are wallets
-              that visited before, not people here now. Figures gathered round an exhibit stand
-              for its reactions, one each up to ten; they are nobody.
-            </p>
-          </nav>
-
-          <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1.5">
-            <p className="mr-1 hidden bg-carbon/85 px-3 py-2 text-xs text-paper/80 xl:block">
-              WASD or arrows walk · click the floor · Enter opens · drag to look
-            </p>
-            <button type="button" onClick={() => select("@board")} className={hudButton}>
-              Campaign board
-            </button>
-            <button type="button" onClick={() => select("@desk")} className={hudButton}>
-              Start a campaign
+              ))}
+            </div>
+          )}
+          <nav
+            aria-label="Rooms and view"
+            className="museum-dock pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto p-1.5"
+          >
+            {ROOMS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                aria-current={entry.id === room ? "true" : undefined}
+                onClick={() => scene.current?.focusRoom(entry.id)}
+                className={`flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full pl-1 pr-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-lime ${
+                  entry.id === room ? "bg-accent text-white" : "text-paper/85 hover:bg-paper/10"
+                }`}
+              >
+                <span
+                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold ${
+                    entry.id === room ? "bg-white text-accent" : "bg-paper/15 text-paper"
+                  }`}
+                >
+                  {entry.code}
+                </span>
+                {entry.name.replace(/^The /, "")}
+                <span className="text-xs opacity-60">{museum ? museum.counts[entry.id] : "·"}</span>
+              </button>
+            ))}
+            <span aria-hidden className="mx-1 h-6 w-px shrink-0 bg-paper/20" />
+            <button
+              type="button"
+              onClick={() => scene.current?.overview()}
+              className="h-9 shrink-0 whitespace-nowrap rounded-full px-3 text-sm font-medium text-paper/85 hover:bg-paper/10 focus-visible:outline-2 focus-visible:outline-lime"
+            >
+              Whole building
             </button>
             {(
               [
-                ["Zoom out", "−", 1 / 1.25],
-                ["Zoom in", "+", 1.25],
+                ["out", "Zoom out", "−", false],
+                ["in", "Zoom in", "+", false],
+                ["help", "How to get around", "?", help],
+                ["more", "More", "⋯", more],
               ] as const
-            ).map(([label, sign, factor]) => (
+            ).map(([what, label, sign, on]) => (
               <button
-                key={label}
+                key={what}
                 type="button"
                 aria-label={label}
-                onClick={() => scene.current?.zoomBy(factor)}
-                className={`${hudButton} w-9 justify-center px-0 text-lg leading-none`}
+                aria-pressed={what === "help" || what === "more" ? on : undefined}
+                onClick={() => {
+                  if (what === "out") scene.current?.zoomBy(1 / 1.25);
+                  else if (what === "in") scene.current?.zoomBy(1.25);
+                  else {
+                    setHelp(what === "help" && !help);
+                    setMore(what === "more" && !more);
+                  }
+                }}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base font-semibold leading-none focus-visible:outline-2 focus-visible:outline-lime ${
+                  on ? "bg-paper text-carbon" : "text-paper/85 hover:bg-paper/10"
+                }`}
               >
                 {sign}
               </button>
             ))}
-          </div>
+          </nav>
         </div>
       </div>
 

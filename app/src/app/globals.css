@@ -391,3 +391,20 @@ dialog::backdrop {
 .museum-plain ~ .museum-soft {
   display: none;
 }
+
+/* The dock at the foot of the floor: one dark, slightly see-through bar with everything on it. */
+.museum-dock {
+  border: 1px solid rgb(240 239 231 / 0.14);
+  border-radius: 9999px;
+  background: rgb(23 25 23 / 0.84);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
+  scrollbar-width: none;
+}
+.museum-dock::-webkit-scrollbar {
+  display: none;
+}
+.museum-dock-panel {
+  border-radius: 16px;
+}

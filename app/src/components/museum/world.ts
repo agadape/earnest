@@ -621,8 +621,8 @@ export function buildWorld(scene: THREE.Scene) {
   bench(realized.x + realized.width / 2 - 0.55, realized.z, false);
 
   const almost = ROOMS[3];
-  runner(almost.width - 1.2, 1.9, almost.x, almost.z - 1.7, matte(PALETTE.floors.almost.runner, 1));
-  runner(almost.width - 1.2, 1.9, almost.x, almost.z + 1.7, matte(PALETTE.floors.almost.runner, 1));
+  // One runner down the aisle that leads in from the door.
+  runner(2.4, almost.depth - 1.2, almost.x, almost.z, matte(PALETTE.floors.almost.runner, 1));
   const back = almost.z - almost.depth / 2 + 0.62;
   for (const dx of [-5.6, -1.9, 1.9, 5.6]) {
     slab(2.8, 1.3, 0.5, almost.x + dx, 0.65, back, woodDark);
