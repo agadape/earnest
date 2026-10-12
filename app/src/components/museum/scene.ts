@@ -11,6 +11,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
+import { person } from "@/components/museum/people";
 import { buildWorld, FAR_WALL, FOREST, SKY } from "@/components/museum/world";
 import {
   canStand,
@@ -216,15 +217,13 @@ export class MuseumScene {
     }
 
     this.visitorBody = new THREE.MeshStandardMaterial({ color: "#a6aaa0", roughness: 0.6 });
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.5, 20), this.visitorBody);
-    body.position.y = 0.25;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 20, 14), this.visitorBody);
-    head.position.y = 0.64;
+    // A little taller than everyone else, so the eye finds them.
+    const self = person(this.visitorBody, 1, 1.12);
     const halo = new THREE.RingGeometry(0.3, 0.38, 32);
     halo.rotateX(-Math.PI / 2);
     this.visitorHalo = new THREE.Mesh(halo, new THREE.MeshBasicMaterial({ color: LIME }));
     this.visitorHalo.position.y = 0.03;
-    this.visitor.add(body, head, this.visitorHalo);
+    this.visitor.add(...self.children, this.visitorHalo);
     this.visitor.position.set(START.x, 0, START.z);
     this.scene.add(this.visitor);
     this.setVisitor(null);
@@ -334,6 +333,8 @@ export class MuseumScene {
     const plinthTall = this.keep(new THREE.BoxGeometry(1.3, 0.72, 1.3));
     const plinthLow = this.keep(new THREE.BoxGeometry(1.3, 0.34, 1.3));
     const skirt = this.keep(new THREE.BoxGeometry(1.46, 0.1, 1.46));
+    const plinthBand = this.keep(new THREE.BoxGeometry(1.36, 0.05, 1.36));
+    const plinthTop = this.keep(new THREE.BoxGeometry(1.42, 0.06, 1.42));
     const post = this.keep(new THREE.CylinderGeometry(0.035, 0.035, 1.7, 6));
     const beam = this.keep(new THREE.BoxGeometry(1.5, 0.06, 0.06));
     const caseBox = this.keep(new THREE.BoxGeometry(1.16, 1.25, 1.16));
@@ -432,7 +433,10 @@ export class MuseumScene {
       card.rotation.set(-0.5, Math.PI / 4, 0, "YXZ");
       card.castShadow = true;
       group.add(card);
-      const top = height + 0.1;
+      // A wooden top with a brass band under it, so a plinth is not just a box.
+      place("plinth-band", plinthBand, brass, exhibit.x, height + 0.07, exhibit.z, false);
+      place("plinth-top", plinthTop, base, exhibit.x, height + 0.13, exhibit.z, true);
+      const top = height + 0.16;
 
       // One material per exhibit, so one can light up without the others.
       const material = this.own(standInMaterial(status, exhibit.tint));
@@ -441,6 +445,7 @@ export class MuseumScene {
       object.scale.setScalar(1.25);
       object.userData.material = material;
       object.userData.rest = material.emissiveIntensity;
+      object.userData.turns = status === "funding";
       group.add(object);
       this.objects.set(exhibit.id, object);
 
@@ -693,12 +698,9 @@ export class MuseumScene {
           color: entry.wallet ? "#8ecae6" : "#c9c5b8",
           roughness: 0.6,
         });
-        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.5, 16), material);
-        body.position.y = 0.25;
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 12), material);
-        head.position.y = 0.64;
-        const figure = new THREE.Group();
-        figure.add(body, head);
+        let variant = 0;
+        for (const letter of entry.id) variant = (variant * 31 + letter.charCodeAt(0)) % 9973;
+        const figure = person(material, variant);
         figure.position.set(entry.x, 0, entry.z);
         this.scene.add(figure);
         const tag = document.createElement("div");
@@ -733,12 +735,7 @@ export class MuseumScene {
       let sum = 0;
       for (const letter of entry.id) sum = (sum * 31 + letter.charCodeAt(0)) % 9973;
       const cloth = new THREE.MeshStandardMaterial({ color: CROWD_SHIRTS[sum % CROWD_SHIRTS.length], roughness: 0.8 });
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 0.5, 10), cloth);
-      body.position.y = 0.25;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), cloth);
-      head.position.y = 0.63;
-      const figure = new THREE.Group();
-      figure.add(body, head);
+      const figure = person(cloth, sum, 0.94);
       const room = ROOMS[(sum + index) % ROOMS.length];
       const start = this.somewhere(room);
       figure.position.set(start.x, 0, start.z);
@@ -948,7 +945,7 @@ export class MuseumScene {
 
   /** Who is walking: a connected wallet, by its short address, or a guest who has none. */
   setVisitor(wallet: string | null) {
-    this.visitorBody.color.set(wallet ? PAPER : "#a6aaa0");
+    this.visitorBody.color.set(wallet ? "#d8f59a" : "#e9e6dc");
     this.visitorHalo.visible = wallet !== null;
     this.visitorTag.textContent = wallet ? `You · ${wallet}` : "Guest";
     this.dirty = true;
@@ -1184,7 +1181,11 @@ export class MuseumScene {
     }
 
     if (!this.calm) {
-      this.visitor.children[0].position.y = 0.25 + (walked ? Math.abs(Math.sin(this.clock * 13)) * 0.05 : 0);
+      this.visitor.children[0].position.y = walked ? Math.abs(Math.sin(this.clock * 13)) * 0.05 : 0;
+      // What is still asking for backers turns slowly, whenever the floor is being drawn anyway.
+      for (const object of this.objects.values()) {
+        if (object.userData.turns) object.rotation.y += 0.45 * seconds;
+      }
     }
 
     const { clientWidth: width, clientHeight: height } = this.host;

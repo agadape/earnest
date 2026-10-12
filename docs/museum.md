@@ -150,6 +150,12 @@ Rooms follow the campaign's own state and nothing else:
   gets its shape from its title, as before, and its colour and fittings from its address, so
   campaigns with the same title are no longer twins. A look cannot be changed afterwards from
   the app. Checked on devnet with one campaign opened from the desk.
+- **What makes the floor look lived in costs little to draw.** Bunting on the tall walls,
+  flowers on the lawns, warm patches under the lamps and water in the fountain are still things
+  welded into a handful of meshes. People are a shirt over one painted mesh with a soft shadow
+  under the feet (`people.ts`). Objects still asking for backers turn slowly, but only in frames
+  that were being drawn anyway, so a museum with nobody moving in it still costs nothing. The
+  frame rate was not measured before or after.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and

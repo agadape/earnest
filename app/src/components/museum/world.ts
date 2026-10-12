@@ -520,7 +520,23 @@ export function buildWorld(scene: THREE.Scene) {
     }
   };
   const lampGlow = new THREE.MeshBasicMaterial({ color: "#ffe9a8" });
+  // The warm patch a lamp throws on the ground: bright under it, gone a little way off.
+  const patch = document.createElement("canvas");
+  patch.width = patch.height = 64;
+  const patchPaint = patch.getContext("2d") as CanvasRenderingContext2D;
+  const warm = patchPaint.createRadialGradient(32, 32, 2, 32, 32, 32);
+  warm.addColorStop(0, "rgba(255,226,150,0.55)");
+  warm.addColorStop(1, "rgba(255,226,150,0)");
+  patchPaint.fillStyle = warm;
+  patchPaint.fillRect(0, 0, 64, 64);
+  const lampPool = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(patch),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
   const lamp = (x: number, z: number, ground = 0) => {
+    laid(3.6, 3.6, x, z, lampPool, ground + 0.025);
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 2.1, 8), woodDark);
     post.position.set(x, ground + 1.05, z);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lampGlow);
@@ -606,6 +622,59 @@ export function buildWorld(scene: THREE.Scene) {
     shrub.castShadow = true;
     scene.add(tub, shrub);
   }
+
+  // ----- Dressing -------------------------------------------------------------------------
+  // Bunting along the top of the tall walls, on the side that faces into each room. It skips
+  // the gateways.
+  const flags = ["#e4572e", "#ffc914", "#17bebb", "#f4f1de", "#9b5de5"].map((color) => matte(color, 0.8));
+  for (const room of ROOMS) {
+    const north = room.z - room.depth / 2;
+    const west = room.x - room.width / 2;
+    let flag = 0;
+    for (let x = west + 0.95; x < room.x + room.width / 2 - 0.6; x += 0.5) {
+      const gate = CORRIDORS.some(
+        (corridor) => corridor.along === "z" && Math.abs(corridor.x - x) < corridor.width / 2 + 0.3 && Math.abs(corridor.z - north) < corridor.depth / 2 + 0.1,
+      );
+      if (!gate) slab(0.3, 0.32 - (flag % 2) * 0.1, 0.03, x, FAR_WALL - 0.2, north + THICK / 2 + 0.03, flags[flag % flags.length], false);
+      flag += 1;
+    }
+    for (let z = north + 0.95; z < room.z + room.depth / 2 - 0.6; z += 0.5) {
+      const gate = CORRIDORS.some(
+        (corridor) => corridor.along === "x" && Math.abs(corridor.z - z) < corridor.depth / 2 + 0.3 && Math.abs(corridor.x - west) < corridor.width / 2 + 0.1,
+      );
+      if (!gate) slab(0.03, 0.32 - (flag % 2) * 0.1, 0.3, west + THICK / 2 + 0.03, FAR_WALL - 0.2, z, flags[flag % flags.length], false);
+      flag += 1;
+    }
+  }
+
+  // Flowers on the lawns, in clumps between the trees. One mesh for all of them.
+  const petals = ["#ff8cc6", "#ffd23f", "#ffffff", "#ff6b6b", "#b388ff"];
+  const blooms: { x: number; z: number; size: number; color: string }[] = [];
+  for (const lawn of lawns) {
+    const clumps = Math.round(((lawn.maxX - lawn.minX) * (lawn.maxZ - lawn.minZ)) / 11);
+    for (let clump = 0; clump < clumps; clump++) {
+      const cx = lawn.minX + 0.9 + random() * (lawn.maxX - lawn.minX - 1.8);
+      const cz = lawn.minZ + 0.9 + random() * (lawn.maxZ - lawn.minZ - 1.8);
+      if (trees.some((tree) => Math.hypot(tree.x - cx, tree.z - cz) < 1.1)) continue;
+      const color = petals[Math.floor(random() * petals.length)];
+      for (let bloom = 0; bloom < 6; bloom++) {
+        blooms.push({ x: cx + (random() - 0.5) * 0.9, z: cz + (random() - 0.5) * 0.9, size: 0.09 + random() * 0.06, color });
+      }
+    }
+  }
+  const flowers = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), matte("#ffffff", 0.9), blooms.length);
+  blooms.forEach((bloom, index) => {
+    matrix.compose(new THREE.Vector3(bloom.x, -0.31 + bloom.size, bloom.z), new THREE.Quaternion(), new THREE.Vector3(bloom.size, bloom.size, bloom.size));
+    flowers.setMatrixAt(index, matrix);
+    flowers.setColorAt(index, new THREE.Color(bloom.color));
+  });
+  scene.add(flowers);
+
+  // Water playing in the fountain: a pale plume over the spout and a ring where it lands.
+  const spray = new THREE.MeshStandardMaterial({ color: "#dff4fb", transparent: true, opacity: 0.7, roughness: 0.2 });
+  weld(new THREE.ConeGeometry(0.34, 0.9, 12).translate(-14.2, 1.5, 9.5), spray, false);
+  weld(new THREE.TorusGeometry(0.9, 0.06, 8, 32).rotateX(Math.PI / 2).translate(-14.2, 0.14, 9.5), spray, false);
+  weld(new THREE.TorusGeometry(1.4, 0.04, 8, 40).rotateX(Math.PI / 2).translate(-14.2, 0.14, 9.5), spray, false);
 
   for (const [material, entry] of welds) {
     for (const [geometries, casts] of [

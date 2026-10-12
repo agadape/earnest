@@ -627,6 +627,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         className="absolute inset-0 cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime"
       />
 
+      {/* The corners of the picture fall off a little, the way a photograph's do. */}
+      <div aria-hidden className="museum-vignette pointer-events-none absolute inset-0" />
       {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
       <div
         aria-hidden
