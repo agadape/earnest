@@ -248,8 +248,10 @@ function Loaded({
         </p>
         <CreatorRecordLine campaign={campaign} now={now} />
 
-        <div className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
-          <div>
+        <div
+          className={`mt-6 grid gap-x-8 gap-y-4 ${compact ? "grid-cols-2" : "sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end"}`}
+        >
+          <div className={compact ? "col-span-2" : undefined}>
             <p className="text-sm text-stone-600">
               <span className="text-2xl font-semibold text-stone-900">
                 {campaign.backers} / {campaign.targetBackers}

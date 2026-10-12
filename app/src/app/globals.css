@@ -41,3 +41,137 @@ body {
 dialog::backdrop {
   background: rgb(28 25 23 / 0.35);
 }
+
+/* A scrollbar that belongs to the museum: thin, grey, no track. */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-machine) transparent;
+}
+.thin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-machine);
+  border-radius: 0;
+}
+
+/* The commitment chamber: dark, with a faint glow where the object stands. */
+.chamber-ground {
+  background:
+    radial-gradient(ellipse 50% 45% at 42% 58%, rgb(240 239 231 / 0.07), transparent 70%),
+    #0f110f;
+}
+
+/* A panel with two cut corners, outlined in the signal colour, on a ruled ground. */
+.hud-frame {
+  --cut: 16px;
+  padding: 1.5px;
+  background: var(--color-lime);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+}
+.hud-frame-inner {
+  height: 100%;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  background-color: #1a1c1a;
+  background-image:
+    linear-gradient(rgb(240 239 231 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(240 239 231 / 0.045) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.hud-button {
+  display: inline-flex;
+  height: 2.75rem;
+  min-width: 8.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1.5px solid var(--color-lime);
+  background: #1a1c1a;
+  padding: 0 1.25rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-lime);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.hud-button:hover,
+.hud-button:focus-visible {
+  background: var(--color-lime);
+  color: var(--color-carbon);
+}
+
+/*
+ * Inside the chamber the campaign is the same component as on its own page, shown on the dark:
+ * the page's light surfaces become clear, its ink becomes paper, its accent becomes the signal
+ * colour. Form fields stay light, so what is typed is easy to read.
+ */
+.chamber {
+  color: var(--color-paper);
+}
+.chamber .bg-white,
+.chamber .bg-stone-50,
+.chamber .bg-stone-100 {
+  background-color: transparent;
+}
+.chamber section {
+  border-color: rgb(240 239 231 / 0.16);
+  background-color: rgb(240 239 231 / 0.03);
+}
+.chamber [class*="text-stone-9"],
+.chamber [class*="text-stone-8"],
+.chamber [class*="text-stone-7"] {
+  color: var(--color-paper);
+}
+.chamber [class*="text-stone-6"],
+.chamber [class*="text-stone-5"],
+.chamber [class*="text-stone-4"] {
+  color: rgb(240 239 231 / 0.62);
+}
+.chamber [class*="border-stone-"],
+.chamber [class*="divide-stone-"] > * {
+  border-color: rgb(240 239 231 / 0.18);
+}
+.chamber .bg-accent-soft {
+  background-color: rgb(216 245 154 / 0.1);
+}
+.chamber .border-accent-line {
+  border-color: rgb(216 245 154 / 0.45);
+}
+.chamber .text-accent,
+.chamber .text-accent-ink {
+  color: var(--color-lime);
+}
+.chamber .bg-accent {
+  background-color: var(--color-lime);
+}
+.chamber .bg-carbon {
+  background-color: var(--color-lime);
+  color: var(--color-carbon);
+}
+.chamber .bg-stone-200 {
+  background-color: rgb(240 239 231 / 0.14);
+}
+.chamber .bg-stone-300,
+.chamber .bg-stone-400 {
+  background-color: rgb(240 239 231 / 0.3);
+  color: var(--color-paper);
+}
+.chamber button.border {
+  color: var(--color-paper);
+}
+.chamber button:disabled {
+  opacity: 0.55;
+}
+.chamber input,
+.chamber textarea {
+  background-color: var(--color-paper);
+  color: var(--color-carbon);
+}
+.chamber h1 {
+  display: none;
+}

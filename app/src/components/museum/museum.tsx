@@ -5,15 +5,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CampaignList, NetworkNotice, SetupNotice } from "@/components/campaign-list";
-import { CampaignView } from "@/components/campaign-view";
+import { Chamber } from "@/components/museum/chamber";
 import type { Direction, MuseumScene } from "@/components/museum/scene";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
-import { formatDuration, shortAddress, usd } from "@/lib/format";
+import { formatDuration, shortAddress } from "@/lib/format";
 import { arrange, type Exhibit, type RoomId, ROOMS, STATUS_WORDS } from "@/lib/museum/plan";
 import { buildEnd, fetchCampaigns } from "@/lib/tanda-jadi";
 
-const PANEL_WIDTH = 520;
 const WIDE = "(min-width: 1024px)";
 
 /** One line under an exhibit's name: what state it is in, in words, and how full it is. */
@@ -68,7 +67,6 @@ export function Museum() {
   const [ready, setReady] = useState(false);
   const [unsupported, setUnsupported] = useState(false);
   const [room, setRoom] = useState<RoomId>("unmade");
-  const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [near, setNear] = useState<string | null>(null);
   // The plaque at the door: what this place is, for someone who has never heard of it.
@@ -76,7 +74,6 @@ export function Museum() {
 
   const select = useCallback((id: string | null) => {
     setSelected(id);
-    setHover(null);
     // The address bar follows, so an open exhibit can be linked to and survives a reload.
     try {
       window.history.replaceState(null, "", id ? `/?exhibit=${id}` : "/");
@@ -97,7 +94,8 @@ export function Museum() {
         created = new Scene(
           element,
           {
-            onHover: (id, x, y) => setHover(id ? { id, x, y } : null),
+            // The scene shows its own label beside what is pointed at.
+            onHover: () => undefined,
             onSelect: (id) => select(id),
             onRoom: setRoom,
             onNear: setNear,
@@ -130,8 +128,8 @@ export function Museum() {
     scene.current?.setInsets(
       // The room's name and its list sit over the left of the floor on a wide window.
       wide ? 340 : 0,
-      selected && wide ? PANEL_WIDTH : 0,
-      selected && !wide ? window.innerHeight * 0.55 : 0,
+      0,
+      0,
     );
     scene.current?.setSelected(selected);
     // Depends on the signature too: an open exhibit that changes rooms is followed there.
@@ -224,7 +222,6 @@ export function Museum() {
   const here = ROOMS.find((candidate) => candidate.id === room) ?? ROOMS[0];
   const inRoom = museum?.exhibits.filter((exhibit) => exhibit.room === room) ?? [];
   const unhung = museum ? museum.counts[room] - inRoom.length : 0;
-  const hovered = hover && museum?.exhibits.find((exhibit) => exhibit.id === hover.id);
   const open = selected ? museum?.exhibits.find((exhibit) => exhibit.id === selected) : undefined;
   const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
 
@@ -238,6 +235,11 @@ export function Museum() {
         className="absolute inset-0 cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime"
       />
 
+      {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem]"
+      />
       {/* What a building cannot say: where you are, and what hangs here. */}
       <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6">
         <div
@@ -261,7 +263,7 @@ export function Museum() {
                 Exhibits in this room <span className="group-open:hidden">+</span>
                 <span className="hidden group-open:inline">−</span>
               </summary>
-              <ol className="mt-2 max-h-[19vh] space-y-1 overflow-y-auto bg-carbon/60 pr-1 sm:max-h-[34vh]">
+              <ol className="thin-scroll mt-2 max-h-[19vh] space-y-1 overflow-y-auto pr-2 sm:max-h-[34vh]">
                 {inRoom.map((exhibit) => (
                   <li key={exhibit.id}>
                     <button
@@ -401,70 +403,6 @@ export function Museum() {
         </div>
       )}
 
-      {hovered && !selected && now !== null && (
-        <div
-          role="status"
-          className="pointer-events-none absolute z-10 max-w-64 bg-paper px-3 py-2 text-carbon shadow-lg"
-          style={{ left: Math.max(8, hover.x + 16), top: Math.max(8, hover.y - 14) }}
-        >
-          <p className="font-mono text-[11px]">{hovered.code}</p>
-          <p className="text-sm font-semibold leading-5">
-            {hovered.campaign.title || "Untitled campaign"}
-          </p>
-          <p className="mt-0.5 text-xs text-stone-600">{caption(hovered, now)}</p>
-          <p className="mt-1 text-xs font-medium">
-            {usd(hovered.campaign.price)} a seat · click to open
-          </p>
-        </div>
-      )}
-
-      {atDoor && !selected && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-carbon/70 p-4">
-          <section
-            aria-labelledby="door-title"
-            className="w-full max-w-xl border border-carbon bg-paper p-6 text-stone-900 shadow-2xl sm:p-9"
-          >
-            <p className="font-mono text-xs uppercase tracking-widest text-stone-600">
-              Earnest · admission free
-            </p>
-            <h1
-              id="door-title"
-              className="mt-3 text-3xl font-semibold uppercase leading-[0.95] tracking-tight sm:text-5xl"
-            >
-              Museum of things that almost existed
-            </h1>
-            <p className="mt-4 text-lg leading-7">
-              A museum for the things the world hasn&apos;t made yet.
-            </p>
-            <p className="mt-3 text-sm leading-6 text-stone-700">
-              Every exhibit is a pre-order for something that does not exist yet. Take a seat by
-              putting down a deposit. If enough people join, it gets built. If too few do, you get
-              your deposit back, and the earliest backers get a bonus from a bond its creator
-              locked.
-            </p>
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                autoFocus
-                onClick={() => setAtDoor(false)}
-                className="h-11 bg-carbon px-6 text-sm font-medium text-lime hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-carbon"
-              >
-                Walk in
-              </button>
-              <Link
-                href="/catalog"
-                className="flex h-11 items-center border border-stone-400 px-5 text-sm font-medium hover:border-stone-900"
-              >
-                Read the catalog instead
-              </Link>
-            </div>
-            <p className="mt-5 border-t border-stone-300 pt-3 font-mono text-[11px] uppercase tracking-wider text-stone-500">
-              Play money on a test network · nothing here is audited
-            </p>
-          </section>
-        </div>
-      )}
-
       {!museum && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
           {error ? (
@@ -480,39 +418,16 @@ export function Museum() {
       )}
 
       {selected && (
-        <aside
-          aria-label="Exhibit"
-          className="absolute inset-x-0 bottom-0 z-20 flex max-h-[62%] flex-col border-t border-carbon bg-paper text-stone-900 shadow-2xl lg:inset-y-0 lg:left-auto lg:right-0 lg:max-h-none lg:w-[520px] lg:border-l lg:border-t-0"
-        >
-          <header className="flex items-start justify-between gap-4 border-b border-stone-300 px-5 py-3">
-            <div className="min-w-0">
-              <p className="font-mono text-xs uppercase tracking-widest text-stone-600">
-                Commitment chamber ·{" "}
-                {open
-                  ? `exhibit ${open.code} · ${ROOMS.find(({ id }) => id === open.room)?.name}`
-                  : "exhibit in storage"}
-              </p>
-              <p className="mt-0.5 text-xs leading-5 text-stone-500">
-                The object on the plinth is a stand-in. Campaigns carry no pictures.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => select(null)}
-              className="shrink-0 border border-stone-400 px-3 py-1.5 text-sm hover:border-stone-900 focus-visible:outline-2 focus-visible:outline-carbon"
-            >
-              Close <span className="hidden font-mono text-xs text-stone-500 sm:inline">esc</span>
-            </button>
-          </header>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-            <CampaignView address={selected} compact />
-            <p className="mt-6 border-t border-stone-300 pt-4 text-sm">
-              <Link href={`/campaign/${selected}`} className="font-medium text-accent hover:underline">
-                Open this exhibit on its own page
-              </Link>
-            </p>
-          </div>
-        </aside>
+        <Chamber
+          address={selected}
+          exhibit={open}
+          now={now}
+          onBack={() => select(null)}
+          onMap={() => {
+            select(null);
+            scene.current?.overview();
+          }}
+        />
       )}
     </div>
   );
