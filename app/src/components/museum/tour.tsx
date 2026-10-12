@@ -4,56 +4,76 @@ import { Frame } from "@/components/museum/chamber";
 import type { RoomId } from "@/lib/museum/plan";
 
 /**
- * The guided tour: the whole idea in seven short stops, each one said in a sentence or two and
- * shown by taking the visitor to the room it is about. Written for someone who has never heard
- * of any of this and does not know where to start.
+ * The tutorial, in the manner of a game's first level: a few stops, each said in a sentence or
+ * two, and at three of them the visitor has to do the thing itself before it goes on. While it
+ * runs, everything else the page lays over the floor is put away, so there is one thing to read
+ * and one thing to do. Written for someone who has never heard of any of this.
  */
-export const TOUR: {
-  /** The room this stop is about; the view and the visitor go there. Missing: the whole building. */
+export interface Stop {
+  /** The room this stop is about; the view and the visitor go there. */
   room?: RoomId;
+  /** Shows the whole building instead of a room. */
+  wide?: boolean;
   title: string;
   body: string;
-  /** What to do with it, once the tour is over. */
+  /**
+   * What the visitor has to do for the tour to go on by itself: walk a few steps, open an
+   * exhibit, or close it again. A stop without one has a Next button.
+   */
+  task?: "walk" | "open" | "close";
+  /** The task, in the words of an instruction. */
+  ask?: string;
   tip?: string;
-}[] = [
+}
+
+export const TOUR: Stop[] = [
   {
+    wide: true,
     title: "This is a museum of things that don't exist yet",
     body: "Every object on a stand is an idea somebody wants to build. They only build it if enough people say “I want one” first.",
-    tip: "Each room shows a different stage of that story. Let's walk through them.",
+    tip: "This takes about a minute. You will walk, open one idea, and see what happens to ideas that make it and ideas that don't.",
   },
   {
     room: "unmade",
-    title: "1. Ideas looking for people",
-    body: "Here, ideas are waiting. To join one, you take a seat by putting down a deposit. The little chairs in front of an object show how many seats are taken.",
-    tip: "Click any object to open it and see its price, its seats and its deadline.",
+    title: "First, walk",
+    body: "The small figure with “You” over it is you.",
+    task: "walk",
+    ask: "Press W, A, S or D to walk. Or click anywhere on the floor.",
+  },
+  {
+    title: "Open an idea",
+    body: "This room holds ideas that are still looking for people. The little chairs in front of each one show how many seats are taken.",
+    task: "open",
+    ask: "Click any object. Or walk up to one and press Enter.",
+  },
+  {
+    title: "This is one idea, up close",
+    body: "On the left: what a seat costs, how many are taken, and when it closes. On the right: where you take a seat by putting down a deposit.",
+    task: "close",
+    ask: "Have a look, then press Back at the bottom left.",
   },
   {
     room: "workshop",
-    title: "2. Enough people joined: it gets built",
-    body: "When every seat is taken, the idea moves here. The creator is paid a part now and the rest later, while they build.",
+    title: "Enough people joined: it gets built",
+    body: "When every seat is taken, the idea moves here. The creator is paid a part now and the rest later, while they build. Finished ones end up in the Realized Wing.",
     tip: "If the creator disappears, the backers can vote to stop it and take back what is left.",
   },
   {
-    room: "realized",
-    title: "3. It was built",
-    body: "These ideas made it to the end. The building time ran out, the backers did not stop it, and the creator received the money.",
-  },
-  {
     room: "almost",
-    title: "4. Not enough people joined",
+    title: "Not enough people joined",
     body: "These ideas did not fill their seats in time. Everyone got their deposit back, and the earliest backers also got a bonus, paid by the creator.",
-    tip: "That bonus is the point: the creator locks it up before asking, so joining early is never for nothing.",
+    tip: "The creator locks that bonus up before asking, so joining early is never for nothing.",
   },
   {
     room: "annex",
-    title: "5. Rooms built by creators",
-    body: "Anyone who starts an idea can build it a room of its own here. Pick an empty square, pick a floor colour, done.",
+    title: "Rooms built by creators",
+    body: "Anyone who starts an idea can build it a room of its own here: pick an empty square, pick a floor colour, done.",
   },
   {
     room: "unmade",
     title: "Now it's your turn",
-    body: "Walk with W A S D or by clicking the floor. The board by the door lists every idea. The curator's desk is where you start your own.",
-    tip: "This is a demo on a test network with play money: press “Connect”, then “Get demo dollars”, and try taking a seat. Nothing here has been audited.",
+    body: "The board by the door lists every idea. The curator's desk next to it is where you start your own.",
+    tip: "This is a demo on a test network with play money: press “Connect” at the top, then “Get demo dollars”, and try taking a seat. Nothing here has been audited.",
   },
 ];
 
@@ -74,13 +94,13 @@ export function Tour({
     <section
       aria-label="Guided tour"
       aria-live="polite"
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center p-3 sm:bottom-14 sm:justify-end sm:p-5"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center p-3 sm:p-6"
     >
-      <Frame className="pointer-events-auto w-full max-w-xl">
+      <Frame className="pointer-events-auto w-full max-w-2xl shadow-2xl">
         <div className="p-5 text-paper sm:p-6">
           <div className="flex items-center justify-between gap-4">
             <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">
-              Guided tour · stop {step + 1} of {TOUR.length}
+              Tutorial · {step + 1} of {TOUR.length}
             </p>
             <div aria-hidden className="flex gap-1">
               {TOUR.map((_, index) => (
@@ -90,24 +110,38 @@ export function Tour({
           </div>
           <h2 className="mt-2 text-xl font-semibold leading-tight text-lime sm:text-2xl">{stop.title}</h2>
           <p className="mt-2 text-base leading-7 text-paper">{stop.body}</p>
+          {stop.ask && (
+            <p className="mt-3 flex items-start gap-3 border border-lime bg-lime/10 px-3 py-2.5 text-base font-medium leading-6 text-lime">
+              <span aria-hidden className="mt-0.5 font-mono text-xs uppercase tracking-wider">
+                Do this
+              </span>
+              <span>{stop.ask}</span>
+            </p>
+          )}
           {stop.tip && <p className="mt-2 border-l-2 border-lime pl-3 text-sm leading-6 text-paper/75">{stop.tip}</p>}
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              autoFocus
-              onClick={() => (last ? onClose() : onStep(step + 1))}
-              className="h-10 bg-lime px-5 font-mono text-xs font-semibold uppercase tracking-wider text-carbon hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
-            >
-              {last ? "Start exploring" : "Next"}
-            </button>
-            {step > 0 && (
+            {stop.task ? (
+              <button type="button" onClick={() => onStep(step + 1)} className="hud-button">
+                I can&apos;t, skip this step
+              </button>
+            ) : (
+              <button
+                type="button"
+                autoFocus
+                onClick={() => (last ? onClose() : onStep(step + 1))}
+                className="h-10 bg-lime px-5 font-mono text-xs font-semibold uppercase tracking-wider text-carbon hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
+              >
+                {last ? "Start exploring" : "Next"}
+              </button>
+            )}
+            {step > 0 && !stop.task && (
               <button type="button" onClick={() => onStep(step - 1)} className="hud-button">
                 Back
               </button>
             )}
             {!last && (
               <button type="button" onClick={onClose} className="hud-button ml-auto">
-                Skip the tour <span className="hidden font-mono text-[10px] opacity-60 sm:inline">esc</span>
+                Leave the tutorial
               </button>
             )}
           </div>

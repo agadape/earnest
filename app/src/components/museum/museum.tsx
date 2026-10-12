@@ -349,10 +349,30 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   // Each stop of the tour is about a room; the view and the visitor go there.
   useEffect(() => {
     if (!sceneId || tour === null) return;
-    const room = TOUR[tour]?.room;
-    if (room) scene.current?.focusRoom(room);
-    else scene.current?.overview();
+    const stop = TOUR[tour];
+    if (stop?.room) scene.current?.focusRoom(stop.room);
+    else if (stop?.wide) scene.current?.overview();
   }, [sceneId, tour]);
+
+  // Three stops wait for the visitor to do something, and go on by themselves once it is done.
+  const task = tour !== null ? TOUR[tour]?.task : undefined;
+  useEffect(() => {
+    if (tour === null || !task) return;
+    const next = () => setTour((at) => (at === tour ? tour + 1 : at));
+    if (task === "walk") {
+      const from = scene.current?.whereabouts();
+      const watch = setInterval(() => {
+        const now = scene.current?.whereabouts();
+        if (from && now && Math.hypot(now.x - from.x, now.z - from.z) > 1.5) next();
+      }, 250);
+      return () => clearInterval(watch);
+    }
+    // Opened: the chamber is up. Closed: it is gone again.
+    if ((task === "open") === (selected !== null)) {
+      const timer = setTimeout(next, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [tour, task, selected]);
 
   // Walking is done with the keyboard anywhere on the page, except while something is being
   // typed or a control has the keys: a button's own Enter and a text box's letters come first.
@@ -380,7 +400,6 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     const onDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (placing) setPlacing(null);
-        else if (tour !== null && !selected && !panel) setTour(null);
         else if (selected || panel) select(null);
         else setAtDoor(false);
         return;
@@ -477,10 +496,13 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem]"
+        className={`pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem] ${tour !== null ? "invisible" : ""}`}
       />
-      {/* What a building cannot say: where you are, and what hangs here. */}
-      <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6">
+      {/* What a building cannot say: where you are, and what hangs here. Put away during
+          the tutorial, which wants one thing read and one thing done. */}
+      <div
+        className={`pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6 ${tour !== null ? "invisible" : ""}`}
+      >
         <div className="pointer-events-auto max-w-sm">
           <p className="font-mono text-xs uppercase tracking-widest text-lime">
             Room {current.code} · {museum ? museum.counts[room] : "…"}{" "}
@@ -600,7 +622,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
                   onClick={() => setTour(0)}
                   className={`${hudButton} border-lime text-lime`}
                 >
-                  Guided tour
+                  Tutorial
                 </button>
               </li>
             </ul>
@@ -705,7 +727,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
                 }}
                 className="h-11 bg-carbon px-6 text-sm font-medium text-lime hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-carbon"
               >
-                Take the 1-minute tour
+                Play the 1-minute tutorial
               </button>
               <button
                 type="button"
@@ -774,7 +796,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       {panel === "record" && creator && (
         <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
       )}
-      {tour !== null && !selected && !panel && !placing && !atDoor && (
+      {tour !== null && !panel && !placing && !atDoor && (!selected || task === "close") && (
         <Tour step={tour} onStep={setTour} onClose={() => setTour(null)} />
       )}
       {beingPlaced && !selected && !panel && (
