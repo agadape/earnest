@@ -10,6 +10,7 @@
   --color-paper: #f0efe7;
   /* The museum: its concrete, its one signal colour, and the grey of its fittings. */
   --color-carbon: #171917;
+  --color-toy-ink: #3b2f22;
   --color-lime: #d8f59a;
   --color-machine: #777b73;
   --color-signal: #ff6338;
@@ -240,4 +241,64 @@ dialog::backdrop {
   .museum-mark > span {
     animation: none;
   }
+}
+
+/*
+ * The close look at one exhibit is a bright gallery, in the manner of a management game: a
+ * painted wall over a wooden floor, cards with thick outlines that sit a little off the wall,
+ * and buttons that go down when pressed.
+ */
+.gallery-ground {
+  background:
+        linear-gradient(to bottom, transparent 0, transparent calc(70% - 14px), #8a5a3a calc(70% - 14px), #8a5a3a 70%, transparent 70%),
+    repeating-linear-gradient(90deg, rgb(59 47 34 / 0.07) 0 2px, transparent 2px 120px),
+    linear-gradient(to bottom, #bfe3ee 0, #e3f1ea 70%, #d7ae78 70%, #c39561 100%);
+}
+.toy-card {
+  border: 3px solid var(--color-toy-ink);
+  border-radius: 18px;
+  background: #fffaf0;
+  box-shadow: 0 6px 0 var(--color-toy-ink);
+}
+.toy-button {
+  display: inline-flex;
+  height: 2.75rem;
+  min-width: 7.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 3px solid var(--color-toy-ink);
+  border-radius: 14px;
+  background: #fffaf0;
+  padding: 0 1.1rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: var(--color-toy-ink);
+  box-shadow: 0 4px 0 var(--color-toy-ink);
+  transition: transform 80ms, box-shadow 80ms, background-color 120ms;
+}
+.toy-button:hover,
+.toy-button:focus-visible {
+  background: #fff3d6;
+}
+.toy-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--color-toy-ink);
+}
+.toy-button:disabled {
+  opacity: 0.55;
+}
+/* A button as wide as what is in it, or as its place in a row. */
+.toy-button-fit {
+  min-width: 0;
+  padding: 0;
+}
+.toy-button-on,
+.toy-button-on:hover,
+.toy-button-on:focus-visible {
+  background: #b8e86a;
+}
+/* The campaign shows its own title on the sign above; it need not say it twice. */
+.gallery h1 {
+  display: none;
 }

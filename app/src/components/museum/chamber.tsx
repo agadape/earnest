@@ -28,12 +28,21 @@ const rightNow = () => Date.now();
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <dt className="font-mono text-[11px] uppercase tracking-widest text-lime">{label}</dt>
-      <dd className="mt-0.5 pl-3 font-mono text-sm text-paper">{children}</dd>
+    <div className="rounded-xl border-2 border-toy-ink/15 bg-white px-3 py-2">
+      <dt className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">{label}</dt>
+      <dd className="mt-0.5 text-base font-extrabold leading-tight text-toy-ink">{children}</dd>
     </div>
   );
 }
+
+// The colour of the ribbon over an exhibit's card, by the state it is in.
+const RIBBON: Record<Exhibit["status"], string> = {
+  funding: "bg-[#b8e86a]",
+  building: "bg-[#ffcf5c]",
+  completed: "bg-[#8ed1f0]",
+  failed: "bg-[#d8d0bd]",
+  braked: "bg-[#ff9a7a]",
+};
 
 /** The one date that matters for the state an exhibit is in. */
 function when(exhibit: Exhibit, now: number): { label: string; value: string } {
@@ -163,51 +172,78 @@ export function Chamber({
   const campaign = exhibit?.campaign;
   const date = exhibit && now !== null ? when(exhibit, now) : null;
 
+  const seats = campaign ? Math.min(campaign.targetBackers, 24) : 0;
+
   return (
     <section
       aria-label="Commitment chamber"
-      className="chamber-ground absolute inset-0 z-20 flex flex-col overflow-y-auto text-paper lg:block lg:overflow-hidden"
+      className="gallery-ground absolute inset-0 z-20 flex flex-col overflow-y-auto text-toy-ink lg:block lg:overflow-hidden"
     >
-      <header className="shrink-0 px-4 pt-4 sm:px-6 sm:pt-5 lg:absolute lg:left-0 lg:top-0 lg:z-10 lg:max-w-[calc(100%-33rem)]">
-        <p className="font-mono text-xs uppercase tracking-widest text-paper/60">
-          Commitment chamber
-          {exhibit && ` · exhibit ${exhibit.code} · ${ROOMS.find(({ id }) => id === exhibit.room)?.name}`}
-        </p>
-        <h1 className="mt-1 font-mono text-2xl font-semibold leading-tight text-lime sm:text-3xl">
-          {campaign ? campaign.title || "Untitled campaign" : "An exhibit in storage"}
-        </h1>
+      {/* The exhibit's name, on a sign hung at the top of the wall. */}
+      <header className="shrink-0 px-4 pt-4 sm:px-6 sm:pt-5 lg:absolute lg:left-6 lg:top-5 lg:z-10 lg:max-w-[calc(100%-35rem)] lg:p-0">
+        <div className="toy-card inline-block max-w-full px-5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-toy-ink/60">
+            {exhibit ? `Exhibit ${exhibit.code} · ${ROOMS.find(({ id }) => id === exhibit.room)?.name}` : "Exhibit"}
+          </p>
+          <h1 className="mt-0.5 text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl">
+            {campaign ? campaign.title || "Untitled campaign" : "An exhibit in storage"}
+          </h1>
+        </div>
       </header>
 
-      {/* The object, in whatever the two panels leave free. */}
+      {/* The object on its plinth, in whatever the two cards leave free. */}
       <div
         ref={stage}
         aria-hidden
-        className="h-[38vh] shrink-0 lg:absolute lg:bottom-20 lg:left-72 lg:right-[32rem] lg:top-24 lg:h-auto"
+        className="h-[38vh] shrink-0 lg:absolute lg:bottom-0 lg:left-72 lg:right-[33rem] lg:top-24 lg:h-auto"
       />
 
       {exhibit && campaign && (
-        <Frame className="mx-4 shrink-0 sm:mx-6 lg:absolute lg:left-6 lg:top-1/2 lg:mx-0 lg:w-64 lg:-translate-y-1/2">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-4 p-5 lg:grid-cols-1">
-            <Fact label="State">{STATUS_WORDS[exhibit.status]}</Fact>
-            <Fact label="Seats">
-              {campaign.backers} of {campaign.targetBackers} taken
-            </Fact>
-            <Fact label="A seat costs">{usd(campaign.price)}</Fact>
-            {date && <Fact label={date.label}>{date.value}</Fact>}
-            <Fact label="Creator's bond">{usd(bond(campaign))}</Fact>
-            <Fact label="Made by">
-              <button
-                type="button"
-                onClick={() => onCreator(campaign.creator.toBase58())}
-                className="underline underline-offset-2 hover:text-lime"
-              >
-                {shortAddress(campaign.creator)}
-              </button>
-            </Fact>
-          </dl>
-          <div className="border-t border-paper/15 px-5 py-4">
-            <p className="font-mono text-[11px] uppercase tracking-widest text-lime">Reactions</p>
-            <div className="mt-2 flex gap-1.5">
+        <div className="toy-card thin-scroll mx-4 shrink-0 overflow-hidden sm:mx-6 lg:absolute lg:bottom-24 lg:left-6 lg:top-32 lg:mx-0 lg:w-64 lg:overflow-y-auto">
+          <p className={`border-b-[3px] border-toy-ink px-4 py-2 text-sm font-extrabold uppercase tracking-wide ${RIBBON[exhibit.status]}`}>
+            {STATUS_WORDS[exhibit.status]}
+          </p>
+          <div className="space-y-2 p-3">
+            <div className="rounded-xl border-2 border-toy-ink/15 bg-white px-3 py-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">Seats</p>
+              <p className="text-base font-extrabold leading-tight">
+                {campaign.backers} of {campaign.targetBackers} taken
+              </p>
+              <div aria-hidden className="mt-1.5 flex flex-wrap gap-1">
+                {Array.from({ length: seats }, (_, index) => (
+                  <span
+                    key={index}
+                    className={`h-3.5 w-3.5 rounded-[4px] border-2 border-toy-ink ${
+                      index < Math.round((campaign.backers * seats) / campaign.targetBackers) ? "bg-[#b8e86a]" : "bg-white"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+            <dl className="grid grid-cols-2 gap-2">
+              <Fact label="A seat">{usd(campaign.price)}</Fact>
+              <Fact label="Maker's bond">{usd(bond(campaign))}</Fact>
+              {date && (
+                <div className="col-span-2">
+                  <Fact label={date.label}>{date.value}</Fact>
+                </div>
+              )}
+              <div className="col-span-2">
+                <Fact label="Made by">
+                  <button
+                    type="button"
+                    onClick={() => onCreator(campaign.creator.toBase58())}
+                    className="font-mono text-sm underline decoration-2 underline-offset-2 hover:text-accent"
+                  >
+                    {shortAddress(campaign.creator)}
+                  </button>
+                </Fact>
+              </div>
+            </dl>
+          </div>
+          <div className="border-t-[3px] border-toy-ink bg-[#fff3d6] px-3 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">Reactions</p>
+            <div className="mt-1.5 flex gap-2">
               {REACTIONS.map(({ kind, sign, label }) => (
                 <button
                   key={kind}
@@ -217,60 +253,52 @@ export function Chamber({
                   aria-pressed={mine.has(`${address}:${kind}`)}
                   disabled={busy !== null || signing !== null}
                   onClick={() => react(kind)}
-                  className={`flex h-9 flex-1 items-center justify-center gap-1.5 border font-mono text-sm hover:border-lime disabled:opacity-50 ${
-                    mine.has(`${address}:${kind}`) ? "border-lime bg-lime/15 text-lime" : "border-paper/30 text-paper"
-                  }`}
+                  className={`toy-button toy-button-fit h-11 flex-1 gap-1.5 text-base ${mine.has(`${address}:${kind}`) ? "toy-button-on" : ""}`}
                 >
                   <span aria-hidden>{sign}</span>
                   {reactions?.[kind] ?? 0}
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-[11px] leading-4 text-paper/55">
+            <p className="mt-2.5 text-[11px] leading-4 text-toy-ink/60">
               {inDatabase
-                ? "You sign a message; it costs nothing. One of each kind per wallet, and a second press takes it back. A count is of wallets, not people. "
-                : "Each one is a transaction you sign. One wallet can react more than once, so this counts reactions, not people. "}
-              They gather a crowd round the exhibit.
+                ? "Free: you sign a message. One of each per wallet; press again to take it back. Counts wallets, not people."
+                : "Each is a transaction you sign. One wallet can react more than once, so this counts reactions, not people."}
             </p>
           </div>
           {onPlace && (
-            <div className="border-t border-paper/15 px-5 py-4">
-              <button type="button" onClick={onPlace} className="hud-button w-full justify-center">
-                {hasRoom ? "Move its room" : "Build it a room in the Annex"}
+            <div className="border-t-[3px] border-toy-ink p-3">
+              <button type="button" onClick={onPlace} className="toy-button toy-button-on w-full">
+                {hasRoom ? "Move its room" : "Build it a room"}
               </button>
             </div>
           )}
-        </Frame>
+        </div>
       )}
 
-      <Frame className="mx-4 mt-4 shrink-0 sm:mx-6 lg:absolute lg:bottom-20 lg:right-6 lg:top-5 lg:mx-0 lg:mt-0 lg:w-[30rem]">
-        <div className="flex h-full flex-col">
-          <div className="shrink-0 border-b border-paper/15 px-5 py-3">
-            <p className="font-mono text-[11px] uppercase tracking-widest text-lime">The commitment</p>
-            <p className="mt-0.5 text-xs leading-5 text-paper/60">
-              What you can do here, and what each ending pays. The object beside this is a stand-in:
-              campaigns carry no pictures.
-            </p>
-          </div>
-          <div className="chamber thin-scroll min-h-0 flex-1 px-5 py-5 lg:overflow-y-auto">
-            <CampaignView address={address} compact />
-          </div>
+      <div className="toy-card mx-4 mt-4 flex shrink-0 flex-col overflow-hidden sm:mx-6 lg:absolute lg:bottom-20 lg:right-6 lg:top-5 lg:mx-0 lg:mt-0 lg:w-[31rem]">
+        <div className="shrink-0 border-b-[3px] border-toy-ink bg-[#fff3d6] px-5 py-3">
+          <p className="text-sm font-extrabold uppercase tracking-wide">Take a seat</p>
+          <p className="mt-0.5 text-xs leading-5 text-toy-ink/65">
+            What you can do here, and what each ending pays. The object is a stand-in: campaigns carry no pictures.
+          </p>
         </div>
-      </Frame>
+        <div className="gallery thin-scroll min-h-0 flex-1 bg-paper px-5 py-5 lg:overflow-y-auto">
+          <CampaignView address={address} compact />
+        </div>
+      </div>
 
-      <div className="sticky bottom-0 mt-4 flex shrink-0 items-center justify-between gap-3 bg-carbon/95 px-4 py-3 sm:px-6 lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:bg-transparent lg:py-5">
-        <button type="button" onClick={onBack} className="hud-button">
-          Back <span className="hidden font-mono text-[10px] opacity-60 sm:inline">esc</span>
+      <div className="sticky bottom-0 mt-4 flex shrink-0 items-center justify-between gap-3 bg-[#fff8e7]/95 px-4 py-3 sm:px-6 lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:bg-transparent lg:py-4">
+        <button type="button" onClick={onBack} className="toy-button">
+          ← Back <span className="hidden text-[10px] font-bold opacity-50 sm:inline">esc</span>
         </button>
-        <div className="hidden items-center gap-2 font-mono text-xs uppercase tracking-wider text-paper/55 md:flex">
-          <span>Drag to turn</span>
-          <span aria-hidden>·</span>
-          <span>Scroll to zoom</span>
+        <div className="hidden items-center gap-2 text-xs font-bold uppercase tracking-wide text-toy-ink/60 md:flex">
+          <span>Drag to turn · scroll to zoom</span>
           <button
             type="button"
             aria-label="Move further away"
             onClick={() => inspector.current?.zoomBy(1.2)}
-            className="ml-2 flex h-8 w-8 items-center justify-center border border-paper/30 text-base hover:border-lime hover:text-lime"
+            className="toy-button toy-button-fit ml-2 h-9 w-9 text-lg"
           >
             −
           </button>
@@ -278,12 +306,12 @@ export function Chamber({
             type="button"
             aria-label="Move closer"
             onClick={() => inspector.current?.zoomBy(1 / 1.2)}
-            className="flex h-8 w-8 items-center justify-center border border-paper/30 text-base hover:border-lime hover:text-lime"
+            className="toy-button toy-button-fit h-9 w-9 text-lg"
           >
             +
           </button>
         </div>
-        <button type="button" onClick={onMap} className="hud-button">
+        <button type="button" onClick={onMap} className="toy-button">
           View map
         </button>
       </div>

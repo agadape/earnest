@@ -135,6 +135,13 @@ Rooms follow the campaign's own state and nothing else:
   It plays once per browser, can be skipped at any moment, is offered on the plaque at the door
   and can be replayed from the directory. It replaced a tutorial that made the visitor walk and
   open things before it would go on: that one could get stuck, and its first user said so.
+- **The close look is a bright gallery.** It was a dark panel with cut corners, which did not
+  belong to the building it is in. It is now a painted wall over a wooden floor, the object on a
+  plinth of stone, paint, wood and brass, and cards with thick outlines and buttons that go
+  down when pressed (`.toy-card`, `.toy-button` in `globals.css`). The board, the desk, the
+  creator's file and build mode still wear the dark frame. The stand-in objects are small
+  models now, a coloured body with pale parts and brass fittings, welded so each costs three
+  draws (`objects.ts`). They were looked at in the close view; on the floor only in passing.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and

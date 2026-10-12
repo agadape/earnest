@@ -435,7 +435,7 @@ export class MuseumScene {
 
       // One material per exhibit, so one can light up without the others.
       const material = this.own(standInMaterial(status, exhibit.kind));
-      const object = standIn(exhibit.kind, material, (geometry) => this.keep(geometry));
+      const object = standIn(exhibit.kind, material, (geometry) => this.keep(geometry), ended);
       object.position.y = top;
       object.scale.setScalar(1.25);
       object.userData.material = material;

@@ -1,5 +1,5 @@
 /**
- * One exhibit seen up close: its object alone on a turntable, lit from above, against the dark.
+ * One exhibit seen up close: its object on a plinth that turns, in the light of a gallery.
  * Drag turns it, the wheel moves closer or further. Nothing here knows what the campaign is
  * beyond which object stands for it and which state it is in.
  */
@@ -20,7 +20,7 @@ export class Inspector {
   private readonly observer: ResizeObserver;
   private frame = 0;
   private last = performance.now();
-  private distance = 6;
+  private distance = 7.4;
   private tilt = 0.32;
   private drag: { x: number; y: number } | null = null;
   // After a drag the object rests for a moment before it starts turning by itself again.
@@ -41,57 +41,53 @@ export class Inspector {
     this.renderer.domElement.style.cursor = "grab";
     host.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.HemisphereLight(PAPER, "#1b1d1b", 0.9));
-    const lamp = new THREE.SpotLight("#fff3da", 60, 14, 0.5, 0.6, 1.4);
-    lamp.position.set(-1.6, 5.5, 2.6);
+    // A bright gallery: daylight from above, a warm lamp, and a little light back from the floor.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.scene.add(new THREE.HemisphereLight("#f4fbff", "#c9a877", 1.5));
+    const lamp = new THREE.SpotLight("#fff3da", 55, 14, 0.55, 0.7, 1.4);
+    lamp.position.set(-1.8, 5.5, 2.8);
     lamp.castShadow = true;
     lamp.shadow.mapSize.set(1024, 1024);
+    lamp.shadow.radius = 4;
     this.scene.add(lamp, lamp.target);
-    const rim = new THREE.DirectionalLight(status === "funding" ? LIME : PAPER, 0.9);
+    const rim = new THREE.DirectionalLight(status === "funding" ? LIME : PAPER, 1.1);
     rim.position.set(3, 1.5, -3);
     this.scene.add(rim);
 
-    const object = standIn(kind, standInMaterial(status, kind));
+    const ended = status === "failed" || status === "braked";
+    const object = standIn(kind, standInMaterial(status, kind), undefined, ended);
     object.scale.setScalar(1.3);
-    object.position.y = 0.2;
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh) child.castShadow = true;
-    });
-    const plate = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.05, 1.15, 0.2, 64),
-      new THREE.MeshStandardMaterial({ color: "#2b2d2a", roughness: 0.6, metalness: 0.35 }),
-    );
-    plate.position.y = 0.1;
-    plate.receiveShadow = true;
-    const edge = new THREE.Mesh(
-      new THREE.TorusGeometry(1.06, 0.012, 8, 96).rotateX(Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: LIME }),
-    );
-    edge.position.y = 0.2;
-    this.turntable.add(plate, edge, object);
-    this.turntable.position.y = -0.85;
+    object.position.y = 0.62;
+
+    // The plinth it stands on: a stone foot, a painted column, a wooden top edged in brass.
+    const stone = new THREE.MeshStandardMaterial({ color: "#d9cfb8", roughness: 0.85 });
+    const paint = new THREE.MeshStandardMaterial({ color: "#fbf3df", roughness: 0.6 });
+    const wood = new THREE.MeshStandardMaterial({ color: "#8a5a3a", roughness: 0.55 });
+    const brass = new THREE.MeshStandardMaterial({ color: "#d9ab35", roughness: 0.3, metalness: 0.65 });
+    const piece = (geometry: THREE.BufferGeometry, material: THREE.Material, y: number) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.y = y;
+      mesh.castShadow = mesh.receiveShadow = true;
+      this.turntable.add(mesh);
+    };
+    piece(new THREE.CylinderGeometry(1.2, 1.28, 0.12, 64), stone, 0.06);
+    piece(new THREE.CylinderGeometry(0.98, 1.08, 0.36, 64), paint, 0.3);
+    piece(new THREE.CylinderGeometry(1.08, 1.02, 0.1, 64), wood, 0.53);
+    piece(new THREE.TorusGeometry(1.07, 0.03, 10, 96).rotateX(Math.PI / 2), brass, 0.585);
+    piece(new THREE.TorusGeometry(1.0, 0.02, 10, 96).rotateX(Math.PI / 2), brass, 0.13);
+    this.turntable.add(object);
+    this.turntable.position.y = -1.3;
     this.scene.add(this.turntable);
 
-    // A faint disc of light on the dark under the turntable.
-    const pool = document.createElement("canvas");
-    pool.width = pool.height = 128;
-    const context = pool.getContext("2d") as CanvasRenderingContext2D;
-    const fade = context.createRadialGradient(64, 64, 6, 64, 64, 64);
-    fade.addColorStop(0, "rgba(240,239,231,0.5)");
-    fade.addColorStop(1, "rgba(240,239,231,0)");
-    context.fillStyle = fade;
-    context.fillRect(0, 0, 128, 128);
-    const glow = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.4, 3.4).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({
-        map: new THREE.CanvasTexture(pool),
-        transparent: true,
-        opacity: 0.35,
-        depthWrite: false,
-      }),
+    // The gallery floor shows through from the page; this only catches the plinth's shadow.
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(4.5, 48).rotateX(-Math.PI / 2),
+      new THREE.ShadowMaterial({ opacity: 0.28 }),
     );
-    glow.position.y = -0.86;
-    this.scene.add(glow);
+    floor.position.y = -1.3;
+    floor.receiveShadow = true;
+    this.scene.add(floor);
 
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(host);
@@ -122,7 +118,7 @@ export class Inspector {
     if (!this.calm && !this.drag && this.rest === 0) this.turntable.rotation.y += 0.35 * seconds;
 
     this.camera.position.set(0, Math.sin(this.tilt) * this.distance, Math.cos(this.tilt) * this.distance);
-    this.camera.lookAt(0, -0.05, 0);
+    this.camera.lookAt(0, -0.35, 0);
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -152,7 +148,7 @@ export class Inspector {
 
   /** Moves the camera closer (below one) or further away. */
   zoomBy(factor: number) {
-    this.distance = THREE.MathUtils.clamp(this.distance * factor, 3.2, 8.5);
+    this.distance = THREE.MathUtils.clamp(this.distance * factor, 4, 10);
   }
 
   dispose() {
