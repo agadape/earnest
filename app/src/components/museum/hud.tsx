@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useCreatorCampaigns } from "@/components/creator-record";
 import { Frame } from "@/components/museum/chamber";
 import type { Inspector } from "@/components/museum/inspector";
+import type { Shelf } from "@/components/museum/shelf";
 import { NewCampaignForm } from "@/components/new-campaign-form";
 import { formatDuration, shortAddress, usd } from "@/lib/format";
 import { claimPlotIx, type Plot } from "@/lib/ledger";
@@ -177,11 +178,14 @@ export function Board({
 export function CreatorRecord({
   address,
   now,
+  looks,
   onOpen,
   onClose,
 }: {
   address: string;
   now: number | null;
+  /** The looks creators chose for their objects, by campaign address. */
+  looks: ReadonlyMap<string, Look>;
   onOpen: (address: string) => void;
   onClose: () => void;
 }) {
@@ -214,66 +218,140 @@ export function CreatorRecord({
         },
       ]
     : [];
-  const word = (text: string) => <p className="px-5 py-6 font-mono text-sm text-paper/70">{text}</p>;
+  // The shelf: every object this creator has put in the museum, in the order of the list below.
+  const stage = useRef<HTMLDivElement>(null);
+  const shelf = useRef<Shelf | null>(null);
+  const things =
+    campaigns && now !== null
+      ? campaigns.map((campaign) => ({
+          look: looks.get(campaign.address.toBase58()) ?? lookOf(campaign),
+          status: statusAt(campaign, now),
+        }))
+      : null;
+  // As text, so that the shelf is rebuilt when what stands on it changes and not every second.
+  const shown = things ? JSON.stringify(things) : null;
+  useEffect(() => {
+    const element = stage.current;
+    if (!element || !shown) return;
+    let cancelled = false;
+    let created: Shelf | null = null;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let who = 0;
+    for (const letter of address) who = (who * 31 + letter.charCodeAt(0)) % 9973;
+    import("@/components/museum/shelf")
+      .then(({ Shelf: Make }) => {
+        if (cancelled) return;
+        created = new Make(element, JSON.parse(shown), who, calm);
+        shelf.current = created;
+      })
+      // Without 3D the words and the cards below still say everything.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      created?.dispose();
+      shelf.current = null;
+    };
+  }, [shown, address]);
+
+  const word = (text: string) => (
+    <p className="toy-card mx-auto mt-10 w-max max-w-[90%] px-5 py-4 text-sm font-bold">{text}</p>
+  );
+  const ribbon: Record<Status, string> = {
+    funding: "bg-[#b8e86a]",
+    building: "bg-[#ffcf5c]",
+    completed: "bg-[#8ed1f0]",
+    failed: "bg-[#d8d0bd]",
+    braked: "bg-[#ff9a7a]",
+  };
 
   return (
-    <Overlay
-      label="Creator record"
-      kicker="From the archive · a creator's file"
-      title={creator ? `Creator ${shortAddress(creator)}` : "Creator record"}
-      onClose={onClose}
+    <section
+      aria-label="Creator record"
+      className="gallery-ground absolute inset-0 z-20 flex flex-col overflow-y-auto text-toy-ink lg:overflow-hidden"
     >
+      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="toy-card min-w-0 max-w-full px-5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-toy-ink/60">A maker and what they made</p>
+          <h1 className="mt-0.5 text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl">
+            {creator ? `Maker ${shortAddress(creator)}` : "Maker"}
+          </h1>
+          {record && campaigns && (
+            <p className="mt-1 text-sm font-bold text-toy-ink/70">
+              {campaigns.length === 0 ? "No campaigns from this wallet" : describeRecord(record)}
+            </p>
+          )}
+        </div>
+        <button type="button" onClick={onClose} className="toy-button">
+          ← Back <span className="hidden text-[10px] font-bold opacity-50 sm:inline">esc</span>
+        </button>
+      </header>
+
       {!creator ? (
         word("That is not a wallet address. Check the link and try again.")
       ) : campaigns === null ? (
-        word("The network did not answer. Close this and try again in a moment.")
+        word("The network did not answer. Go back and try again in a moment.")
       ) : !campaigns || !record || now === null ? (
-        <p aria-busy className="px-5 py-6 font-mono text-sm uppercase tracking-widest text-paper/60">
-          Fetching the file…
-        </p>
+        word("Fetching what this maker made…")
       ) : (
-        <div className="thin-scroll min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
-          <div>
-            <p className="break-all font-mono text-sm text-paper">{address}</p>
-            <p className="mt-1 font-mono text-xs uppercase tracking-wider text-lime">
-              {campaigns.length === 0 ? "No campaigns from this wallet" : describeRecord(record)}
-            </p>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-paper/70">
-              Everything here is read from the campaigns this wallet opened. A campaign that
-              didn&apos;t fill is not a black mark: it means the creator asked before building,
-              and paid the bonus they promised. Two things this cannot tell you: a creator can
-              start over with a new wallet, so an empty file says nothing either way, and
-              nothing stops a creator from backing a small campaign of their own to the end.
+        <>
+          {/* The maker and their shelf. Drag it along; a card below brings its object forward. */}
+          <div ref={stage} aria-hidden className="h-[34vh] min-h-52 shrink-0 lg:h-[40vh]" />
+
+          <div className="thin-scroll min-h-0 flex-1 px-4 pb-6 sm:px-6 lg:overflow-y-auto">
+            <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {totals.map(({ label, value, note }) => (
+                <div key={label} className="toy-card px-4 py-3">
+                  <dt className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">{label}</dt>
+                  <dd className="text-3xl font-extrabold leading-tight">{value}</dd>
+                  {note && <dd className="mt-0.5 text-xs font-semibold leading-5 text-toy-ink/65">{note}</dd>}
+                </div>
+              ))}
+            </dl>
+
+            {campaigns.length > 0 && (
+              <ol aria-label="Their campaigns, newest first" className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {campaigns.map((campaign, index) => {
+                  const status = statusAt(campaign, now);
+                  return (
+                    <li key={campaign.address.toBase58()}>
+                      <button
+                        type="button"
+                        onClick={() => onOpen(campaign.address.toBase58())}
+                        onMouseEnter={() => shelf.current?.mark(index)}
+                        onMouseLeave={() => shelf.current?.mark(-1)}
+                        onFocus={() => shelf.current?.mark(index)}
+                        onBlur={() => shelf.current?.mark(-1)}
+                        className="toy-card block h-full w-full overflow-hidden text-left transition-transform hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:outline-none"
+                      >
+                        <span className={`block border-b-[3px] border-toy-ink px-4 py-1.5 text-xs font-extrabold uppercase tracking-wide ${ribbon[status]}`}>
+                          {STATUS_WORDS[status]}
+                        </span>
+                        <span className="block px-4 py-3">
+                          <span className="block text-base font-extrabold leading-snug">
+                            {campaign.title || "Untitled campaign"}
+                          </span>
+                          <span className="mt-1 block text-xs font-bold text-toy-ink/60">
+                            {campaign.backers}/{campaign.targetBackers} seats · {usd(campaign.price)} a seat
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+
+            <p className="toy-card mt-5 max-w-4xl bg-[#fff3d6] px-5 py-3 text-sm font-medium leading-6">
+              All of this is read from the campaigns this wallet opened. A campaign that didn&apos;t fill is
+              not a black mark: the maker asked before building, and paid the bonus they promised. Two
+              things this cannot tell you: a maker can start over with a new wallet, so an empty shelf
+              says nothing either way, and nothing stops a maker from backing a small campaign of their
+              own to the end.
             </p>
           </div>
-          {campaigns.length > 0 && (
-            <>
-              <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                {totals.map(({ label, value, note }) => (
-                  <div key={label} className="border border-paper/20 bg-paper/[0.03] p-4">
-                    <dt className="font-mono text-[11px] uppercase tracking-widest text-lime">{label}</dt>
-                    <dd className="mt-1 font-mono text-3xl font-semibold text-paper">{value}</dd>
-                    {note && <dd className="mt-1 text-xs leading-5 text-paper/65">{note}</dd>}
-                  </div>
-                ))}
-              </dl>
-              <section aria-labelledby="creator-campaigns">
-                <h2 id="creator-campaigns" className="font-mono text-xs uppercase tracking-widest text-paper/60">
-                  Their campaigns, newest first
-                </h2>
-                <ol className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {campaigns.map((campaign) => (
-                    <li key={campaign.address.toBase58()}>
-                      <Card campaign={campaign} now={now} onOpen={onOpen} />
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            </>
-          )}
-        </div>
+        </>
       )}
-    </Overlay>
+    </section>
   );
 }
 

@@ -139,8 +139,9 @@ Rooms follow the campaign's own state and nothing else:
 - **The close look is a bright gallery.** It was a dark panel with cut corners, which did not
   belong to the building it is in. It is now a painted wall over a wooden floor, the object on a
   plinth of stone, paint, wood and brass, and cards with thick outlines and buttons that go
-  down when pressed (`.toy-card`, `.toy-button` in `globals.css`). The board, the desk, the
-  creator's file and build mode still wear the dark frame. The stand-in objects are small
+  down when pressed (`.toy-card`, `.toy-button` in `globals.css`). A creator's file is the same
+  kind of room: the creator as a figure beside a shelf of everything they put in the museum
+  (`shelf.ts`). The board, the desk and build mode still wear the dark frame. The stand-in objects are small
   models now, a coloured body with pale parts and brass fittings, welded so each costs three
   draws (`objects.ts`). They were looked at in the close view; on the floor only in passing.
 - **A creator chooses what their object looks like.** At the curator's desk: one of eight

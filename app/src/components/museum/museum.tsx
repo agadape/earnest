@@ -586,7 +586,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
           <CampaignList searchable />
         )}
         {panel === "record" && creator && (
-          <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
+          <CreatorRecord address={creator} now={now} looks={looks} onOpen={select} onClose={() => select(null)} />
         )}
         {panel === "design" && <DesignMode onOpened={select} onClose={() => select(null)} />}
       </div>
@@ -991,7 +991,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         />
       )}
       {panel === "record" && creator && (
-        <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
+        <CreatorRecord address={creator} now={now} looks={looks} onOpen={select} onClose={() => select(null)} />
       )}
       {intro !== null && !selected && !panel && !placing && (
         <Cutscene
