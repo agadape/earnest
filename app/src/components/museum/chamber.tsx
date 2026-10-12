@@ -268,11 +268,14 @@ export function Chamber({
                 : "Each is a transaction you sign. One wallet can react more than once, so this counts reactions, not people."}
             </p>
           </div>
-          {onPlace && (
+          {onPlace && !hasRoom && (
             <div className="border-t-[3px] border-toy-ink p-3">
               <button type="button" onClick={onPlace} className="toy-button toy-button-on w-full">
-                {hasRoom ? "Move its room" : "Build it a room"}
+                Build it a room
               </button>
+              <p className="mt-2 text-[11px] leading-4 text-toy-ink/60">
+                Yours to place, once: a room cannot be moved afterwards.
+              </p>
             </div>
           )}
         </div>

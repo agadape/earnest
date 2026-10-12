@@ -43,7 +43,7 @@ export const ROOM_STYLES = 5;
 export interface PlotClaim {
   signature: string;
   campaign: string;
-  /** The plot asked for; a negative number gives the room up. */
+  /** The plot asked for. */
   plot: number;
   style: number;
 }
@@ -178,8 +178,9 @@ export interface Plot {
 
 /**
  * Who has which plot, judged claim by claim in the order they were made. A claim counts when
- * the campaign's own creator signed it and the plot is free at that moment; a later claim by
- * the same creator moves the room, and a negative plot gives it up.
+ * the campaign's own creator signed it, the campaign has no room yet and the plot is free at
+ * that moment. A room is built once: it cannot be moved or given up afterwards, so a later
+ * claim for a campaign that has one counts for nothing.
  */
 export function judgeClaims(
   claims: PlotClaim[],
@@ -188,20 +189,14 @@ export function judgeClaims(
   plots: number,
 ): Map<string, Plot> {
   const held = new Map<string, Plot>();
-  const owner = new Map<number, string>();
+  const taken = new Set<number>();
   for (const claim of claims) {
     const creator = creatorOf(claim.campaign);
     if (!creator || !signedBy(claim.signature)?.includes(creator)) continue;
-    if (claim.plot >= plots) continue;
-    if (claim.plot >= 0 && owner.has(claim.plot) && owner.get(claim.plot) !== claim.campaign) continue;
-    const before = held.get(claim.campaign);
-    if (before) owner.delete(before.plot);
-    if (claim.plot < 0) {
-      held.delete(claim.campaign);
-    } else {
-      held.set(claim.campaign, { plot: claim.plot, style: claim.style });
-      owner.set(claim.plot, claim.campaign);
-    }
+    if (claim.plot < 0 || claim.plot >= plots) continue;
+    if (held.has(claim.campaign) || taken.has(claim.plot)) continue;
+    held.set(claim.campaign, { plot: claim.plot, style: claim.style });
+    taken.add(claim.plot);
   }
   return held;
 }

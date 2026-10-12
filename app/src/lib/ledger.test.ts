@@ -60,15 +60,20 @@ test("a plot goes to whoever signed for it first", () => {
   assert.equal(held.has(B), false);
 });
 
-test("moving a room frees the plot it stood on, and so does giving it up", () => {
+test("a room is built once: it cannot be moved or given up", () => {
   const signed = { "1": ["alice"], "2": ["alice"], "3": ["bob"], "4": ["bob"], "5": ["alice"] };
   const moved = judge([claim("1", A, 4), claim("2", A, 9, 3), claim("3", B, 4)], signed);
-  assert.deepEqual(moved.get(A), { plot: 9, style: 3 });
-  assert.deepEqual(moved.get(B), { plot: 4, style: 0 });
+  // The second claim does not move it, so the first plot is still taken when the other asks.
+  assert.deepEqual(moved.get(A), { plot: 4, style: 0 });
+  assert.equal(moved.has(B), false);
 
   const left = judge([claim("1", A, 4), claim("4", B, 7), claim("5", A, -1)], signed);
-  assert.equal(left.has(A), false);
-  assert.equal(left.size, 1);
+  assert.deepEqual(left.get(A), { plot: 4, style: 0 });
+  assert.equal(left.size, 2);
+
+  // A claim that lost its plot to someone quicker leaves its campaign free to ask again.
+  const again = judge([claim("3", B, 4), claim("1", A, 4), claim("2", A, 9, 3)], signed);
+  assert.deepEqual(again.get(A), { plot: 9, style: 3 });
 });
 
 test("a claim that has not been looked up, or names a plot that does not exist, counts for nothing", () => {

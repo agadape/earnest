@@ -100,8 +100,9 @@ Rooms follow the campaign's own state and nothing else:
   the memo program and a transfer of nothing to one fixed address, so the notes can be found
   again by reading that address's history (`app/src/lib/ledger.ts`). The program was not
   changed and knows nothing of them. A claim counts when the campaign's own creator signed it
-  and the plot was free at that moment; the first to sign has the plot, a later claim moves
-  the room, and the app looks up who signed each claim before believing it. Reactions are not
+  the campaign has no room yet and the plot was free at that moment. The first to sign has the
+  plot, and a room is built once: it cannot be moved or given up. The app looks up who signed
+  each claim before believing it, and offers no plot until it has read which are taken. Reactions are not
   looked up: one wallet can react as often as it pays the fee for, so a count is of signed
   reactions, not of people, and the figures drawn round an exhibit (one per reaction, ten at
   most) stand for nobody. The annex has 24 plots; a museum with more creators than that needs

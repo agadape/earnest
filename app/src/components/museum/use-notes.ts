@@ -28,6 +28,8 @@ const NO_REACTIONS: ReadonlyMap<string, ReactionCounts> = new Map();
 export function useNotes(campaigns: Campaign[] | undefined): {
   reactions: ReadonlyMap<string, ReactionCounts>;
   plots: ReadonlyMap<string, Plot>;
+  /** False until the notes have been read once: before that, nobody knows which plots are taken. */
+  ready: boolean;
   /** The look each creator chose for their campaign's object. */
   looks: ReadonlyMap<string, Look>;
   /** What the connected wallet reacted with, as `campaign:kind`. Only known with a database. */
@@ -94,10 +96,13 @@ export function useNotes(campaigns: Campaign[] | undefined): {
           }
         }
         if (active) setRead({ notes, signed });
+        if (active) timer = setTimeout(run, EVERY_MS);
+        return;
       } catch {
         // Keep what was read before.
       }
-      if (active) timer = setTimeout(run, EVERY_MS);
+      // A reading that failed is tried again soon: until one succeeds nobody can build a room.
+      if (active) timer = setTimeout(run, 3_000);
     };
     run();
     return () => {
@@ -132,6 +137,7 @@ export function useNotes(campaigns: Campaign[] | undefined): {
   }, [read, campaigns]);
 
   return {
+    ready: read !== null,
     looks,
     reactions: inDatabase ? fromDatabase : (read?.notes.reactions ?? NO_REACTIONS),
     plots,

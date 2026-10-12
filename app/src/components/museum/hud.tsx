@@ -285,31 +285,36 @@ export function CreatorRecord({
 export function PlotPicker({
   campaign,
   owners,
-  current,
+  known,
   chosen,
   onChoose,
+  style,
+  onStyle,
   onDone,
   onCancel,
 }: {
   campaign: Campaign;
   /** Which campaign stands on which plot now, by plot number. */
   owners: ReadonlyMap<number, string>;
-  current: Plot | undefined;
+  /** Whether it is known yet which plots are taken. Until it is, none can be signed for. */
+  known: boolean;
   chosen: number | null;
   onChoose: (plot: number) => void;
-  onDone: () => void;
+  /** The floor colour picked, as a number into the list of floors. */
+  style: number;
+  onStyle: (style: number) => void;
+  /** Told which plot was signed for, and with which floor. */
+  onDone: (built: Plot) => void;
   onCancel: () => void;
 }) {
   const { send, busy } = useSend();
-  const [style, setStyle] = useState(current?.style ?? 0);
-  const id = campaign.address.toBase58();
   const claim = async (plot: number) => {
     const sent = await send("plot", {
-      pending: plot < 0 ? "Giving the room up" : "Signing for the plot",
-      done: plot < 0 ? "The plot is free again" : `Room built on plot E-${String(plot + 1).padStart(2, "0")}`,
+      pending: "Signing for the plot",
+      done: `Room built on plot E-${String(plot + 1).padStart(2, "0")}`,
       build: async (payer) => [claimPlotIx(payer, campaign.address, plot, style)],
     });
-    if (sent) onDone();
+    if (sent) onDone({ plot, style });
   };
 
   return (
@@ -324,8 +329,9 @@ export function PlotPicker({
             <p className="mt-2 text-xs leading-5 text-paper/70">
               Pick a free plot, on the floor or on the plan, and a colour for the floor. You sign
               one transaction; it costs a network fee and moves no money. The first creator to
-              sign for a plot has it, and you can move later. Without a room it stands in the
-              hall its state puts it in.
+              sign for a plot has it. A room is built once: it cannot be moved or changed
+              afterwards, so choose with care. Without a room it stands in the hall its state
+              puts it in.
             </p>
             <div role="group" aria-label="Floor colour" className="mt-3 flex items-center gap-1.5">
               {ROOM_FLOORS.map((color, index) => (
@@ -334,7 +340,7 @@ export function PlotPicker({
                   type="button"
                   aria-label={`Floor colour ${index + 1}`}
                   aria-pressed={style === index}
-                  onClick={() => setStyle(index)}
+                  onClick={() => onStyle(index)}
                   style={{ backgroundColor: color }}
                   className={`h-7 w-9 border-2 ${style === index ? "border-lime" : "border-paper/20"}`}
                 />
@@ -344,25 +350,21 @@ export function PlotPicker({
           <div className="shrink-0">
             <div role="group" aria-label="Plots" className="grid grid-cols-6 gap-1">
               {PLOTS.map((_, plot) => {
-                const owner = owners.get(plot);
-                const mine = owner === id;
-                const takenByOther = owner !== undefined && !mine;
+                const taken = owners.has(plot);
                 return (
                   <button
                     key={plot}
                     type="button"
-                    disabled={takenByOther || mine}
+                    disabled={taken || !known}
                     aria-pressed={chosen === plot}
-                    aria-label={`Plot ${plot + 1}${takenByOther ? ", taken" : mine ? ", yours now" : ", free"}`}
+                    aria-label={`Plot ${plot + 1}${taken ? ", taken" : ", free"}`}
                     onClick={() => onChoose(plot)}
                     className={`h-8 w-10 border font-mono text-xs ${
                       chosen === plot
                         ? "border-lime bg-lime text-carbon"
-                        : mine
-                          ? "border-lime text-lime"
-                          : takenByOther
-                            ? "border-paper/10 text-paper/25"
-                            : "border-paper/40 text-paper hover:border-lime"
+                        : taken
+                          ? "border-paper/10 text-paper/25 line-through"
+                          : "border-paper/40 text-paper hover:border-lime"
                     }`}
                   >
                     {plot + 1}
@@ -373,17 +375,16 @@ export function PlotPicker({
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={chosen === null || busy !== null}
+                disabled={chosen === null || busy !== null || !known}
                 onClick={() => chosen !== null && claim(chosen)}
                 className="h-9 bg-lime px-4 font-mono text-xs font-semibold uppercase tracking-wider text-carbon hover:bg-white disabled:opacity-40"
               >
-                {chosen === null ? "Pick a plot" : `Sign and build on E-${String(chosen + 1).padStart(2, "0")}`}
+                {!known
+                  ? "Checking which plots are free…"
+                  : chosen === null
+                    ? "Pick a plot"
+                    : `Sign and build on E-${String(chosen + 1).padStart(2, "0")}`}
               </button>
-              {current && (
-                <button type="button" disabled={busy !== null} onClick={() => claim(-1)} className="hud-button">
-                  Give the room up
-                </button>
-              )}
               <button type="button" onClick={onCancel} className="hud-button">
                 Not now <span className="hidden font-mono text-[10px] opacity-60 sm:inline">esc</span>
               </button>

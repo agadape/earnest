@@ -6,15 +6,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CampaignList, NetworkNotice, SetupNotice } from "@/components/campaign-list";
 import { CampaignView } from "@/components/campaign-view";
+import { useToasts } from "@/components/toasts";
 import { Chamber } from "@/components/museum/chamber";
 import { Board, CreatorRecord, DesignMode, PlotPicker } from "@/components/museum/hud";
 import type { Direction, MuseumScene } from "@/components/museum/scene";
+import type { Plot } from "@/lib/ledger";
 import { Cutscene, SCENES } from "@/components/museum/cutscene";
 import { useNotes } from "@/components/museum/use-notes";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
 import { formatDuration, shortAddress } from "@/lib/format";
-import { arrange, type Exhibit, type Look, type RoomId, ROOMS, STATIONS, STATUS_WORDS, stored } from "@/lib/museum/plan";
+import { arrange, type Exhibit, type Look, ROOM_FLOORS, type RoomId, ROOMS, STATIONS, STATUS_WORDS, stored } from "@/lib/museum/plan";
 import { buildEnd, fetchCampaigns } from "@/lib/tanda-jadi";
 
 const WIDE = "(min-width: 1024px)";
@@ -70,7 +72,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const { data: campaigns, error } = usePolled(MINT ? load : null);
 
   // What is written on chain beside the campaigns: reactions, and the rooms creators built.
-  const { reactions, plots, looks: readLooks, mine: reactedByMe, inDatabase, accept, reload: reloadNotes } = useNotes(campaigns);
+  const toasts = useToasts();
+  const { reactions, plots: readPlots, ready: plotsKnown, looks: readLooks, mine: reactedByMe, inDatabase, accept, reload: reloadNotes } = useNotes(campaigns);
   // A campaign opened a moment ago wears the look its creator just chose, without waiting for
   // the note about it to be read back from the chain.
   const [justMade, setJustMade] = useState<Record<string, Look>>({});
@@ -78,6 +81,25 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     () => new Map<string, Look>([...Object.entries(justMade), ...readLooks]),
     [justMade, readLooks],
   );
+  // A room signed for a moment ago stands at once, without waiting for the claim to be read
+  // back from the chain. If the reading then says someone else signed for that plot first,
+  // it is taken down again and its creator is told.
+  const [justBuilt, setJustBuilt] = useState<Record<string, Plot>>({});
+  const plots = useMemo(() => {
+    const all = new Map(readPlots);
+    const takenBy = new Map<number, string>();
+    for (const [id, built] of readPlots) takenBy.set(built.plot, id);
+    for (const [id, built] of Object.entries(justBuilt)) {
+      if (all.has(id) || takenBy.has(built.plot)) continue;
+      all.set(id, built);
+    }
+    return all;
+  }, [readPlots, justBuilt]);
+  // A room this browser built that the chain gave to another campaign.
+  const beaten = Object.entries(justBuilt).find(([id, built]) => {
+    if (readPlots.has(id)) return false;
+    return [...readPlots].some(([other, theirs]) => other !== id && theirs.plot === built.plot);
+  })?.[0];
   const reacted = useMemo(() => {
     const totals = new Map<string, number>();
     for (const [id, counts] of reactions) totals.set(id, counts.want + counts.clever + counts.watching);
@@ -155,6 +177,17 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
 
   // What a click on the floor means depends on whether a plot is being chosen. The scene
   // outlives that, so it is handed a way to ask instead of the answer.
+  useEffect(() => {
+    if (!beaten) return;
+    const timer = setTimeout(() => {
+      setJustBuilt((made) => Object.fromEntries(Object.entries(made).filter(([id]) => id !== beaten)));
+      toasts.show("error", "Someone signed for that plot just before you. Pick another one.");
+      setChosen(null);
+      setPlacing(beaten);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [beaten, toasts]);
+
   const picked = useRef<(id: string | null) => void>(select);
   useEffect(() => {
     picked.current = (id) => {
@@ -170,10 +203,25 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   }, [plots]);
   const free = ROOMS[ROOMS.length - 1].slots.map((_, plot) => plot).filter((plot) => !owners.has(plot));
   const freeKey = free.join(",");
+  // A plot picked a moment ago may have been taken since; then nothing is picked.
+  const pick = chosen !== null && !owners.has(chosen) ? chosen : null;
+  const [floor, setFloor] = useState(0);
   useEffect(() => {
     if (!sceneId) return;
-    scene.current?.setPlacing(placing ? freeKey.split(",").filter(Boolean).map(Number) : null, chosen);
-  }, [sceneId, placing, freeKey, chosen]);
+    scene.current?.setPlacing(
+      // Until the plots have been read once, none is offered: any of them might be taken.
+      placing && plotsKnown ? freeKey.split(",").filter(Boolean).map(Number) : null,
+      pick,
+      ROOM_FLOORS[floor],
+    );
+  }, [sceneId, placing, plotsKnown, freeKey, pick, floor]);
+  // In build mode the camera looks at the annex, raised clear of the panel at the foot of
+  // the window. The visitor stays where they are.
+  useEffect(() => {
+    if (!sceneId || !placing) return;
+    scene.current?.setInsets(0, 0, 250);
+    scene.current?.lookAt("annex");
+  }, [sceneId, placing]);
 
   /** Starts build mode for a campaign: the chamber closes and the view goes to the annex. */
   const place = useCallback(
@@ -182,7 +230,6 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       setAtDoor(false);
       setPlacing(id);
       setChosen(null);
-      scene.current?.focusRoom("annex");
     },
     [select],
   );
@@ -265,16 +312,18 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     if (!sceneId) return;
     // The room's name and its list sit over the left of the floor on a wide window.
     // During the introduction the lower black bar is the taller one; what is looked at sits above it.
-    scene.current?.setInsets(
-      intro === null && notes && window.matchMedia(WIDE).matches ? 340 : 0,
-      0,
-      intro === null ? 0 : 110,
-    );
+    if (!placing) {
+      scene.current?.setInsets(
+        intro === null && notes && window.matchMedia(WIDE).matches ? 340 : 0,
+        0,
+        intro === null ? 0 : 110,
+      );
+    }
     scene.current?.setSelected(selected);
     // The chamber covers the whole floor; there is no point drawing what cannot be seen.
     scene.current?.setPaused(selected !== null);
     // Depends on the signature too: an open exhibit that changes rooms is followed there.
-  }, [sceneId, selected, signature, intro, notes]);
+  }, [sceneId, selected, signature, intro, notes, placing]);
 
   useEffect(() => {
     if (sceneId) scene.current?.setVisitor(publicKey ? shortAddress(publicKey) : null);
@@ -440,7 +489,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
 
   // Walking is done with the keyboard anywhere on the page, except while something is being
   // typed or a control has the keys: a button's own Enter and a text box's letters come first.
-  const covered = selected !== null || panel !== null || atDoor || intro !== null;
+  // Build mode is for choosing a plot and nothing else: no walking off, no opening exhibits.
+  const covered = selected !== null || panel !== null || atDoor || intro !== null || placing !== null;
   useEffect(() => {
     const KEYS: Record<string, Direction> = {
       w: "up",
@@ -559,6 +609,9 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     .sort((a, b) => (a.id === b.id ? 0 : a.id > b.id ? -1 : 1))
     .find((campaign) => !plots.has(campaign.address.toBase58()));
   const beingPlaced = placing ? campaigns?.find((campaign) => campaign.address.toBase58() === placing) : undefined;
+  // Only the wallet that made a campaign can sign for its room, so only it is shown the plan.
+  const mayPlace = beingPlaced !== undefined && viewer === beingPlaced.creator.toBase58();
+  const homeless = mine.filter((campaign) => !plots.has(campaign.address.toBase58()));
   const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
   const station = near ? STATIONS.find((entry) => entry.id === near) : undefined;
   const hudButton =
@@ -577,12 +630,12 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
       <div
         aria-hidden
-        className={`pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem] ${intro !== null || !notes ? "invisible" : ""}`}
+        className={`pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem] ${intro !== null || placing !== null || !notes ? "invisible" : ""}`}
       />
       {/* What a building cannot say: where you are, and what hangs here. Put away during
           the tutorial, which wants one thing read and one thing done. */}
       <div
-        className={`pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6 ${intro !== null ? "invisible" : ""}`}
+        className={`pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6 ${intro !== null || placing !== null ? "invisible" : ""}`}
       >
         {!notes && (
           <button
@@ -621,11 +674,11 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
           {museum && inRoom.length === 0 && (
             <p className="mt-4 border-l-2 border-machine pl-3 text-sm text-paper/75">{current.empty}</p>
           )}
-          {room === "annex" && mine.length > 0 && !placing && (
+          {room === "annex" && homeless.length > 0 && !placing && (
             <div className="mt-4 max-w-xs">
               <p className="font-mono text-xs uppercase tracking-widest text-paper/60">Build a room for</p>
               <ul className="thin-scroll mt-2 max-h-[16vh] space-y-1 overflow-y-auto pr-2">
-                {mine.map((campaign) => {
+                {homeless.map((campaign) => {
                   const id = campaign.address.toBase58();
                   return (
                     <li key={id}>
@@ -635,9 +688,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
                         className="block w-full border border-lime/60 px-3 py-1.5 text-left text-sm hover:bg-lime hover:text-carbon focus-visible:outline-2 focus-visible:outline-lime"
                       >
                         {campaign.title || "Untitled campaign"}
-                        <span className="block font-mono text-[11px] opacity-70">
-                          {plots.has(id) ? "Move its room" : "No room yet"}
-                        </span>
+                        <span className="block font-mono text-[11px] opacity-70">No room yet</span>
                       </button>
                     </li>
                   );
@@ -770,7 +821,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         </div>
       </div>
 
-      {roomless && reminded && !covered && !placing && (
+      {roomless && reminded && !covered && (
         <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center px-4">
           <div
             role="status"
@@ -964,17 +1015,39 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
           Your campaign is open. Fetching it to choose its plot…
         </p>
       )}
-      {beingPlaced && !selected && !panel && (
+      {beingPlaced && !mayPlace && !selected && !panel && (
+        <div className="absolute inset-x-0 bottom-8 z-20 mx-auto flex w-max max-w-[90vw] items-center gap-3 border border-lime bg-carbon px-4 py-2 text-sm text-paper">
+          Only the wallet that opened this campaign can build its room.
+          <button type="button" onClick={() => setPlacing(null)} className="font-mono text-xs uppercase tracking-wider text-lime underline">
+            Close
+          </button>
+        </div>
+      )}
+      {beingPlaced && mayPlace && plots.has(placing ?? "") && !selected && !panel && (
+        <div className="absolute inset-x-0 bottom-8 z-20 mx-auto flex w-max max-w-[90vw] items-center gap-3 border border-lime bg-carbon px-4 py-2 text-sm text-paper">
+          This campaign already has its room. A room is built once.
+          <button type="button" onClick={() => setPlacing(null)} className="font-mono text-xs uppercase tracking-wider text-lime underline">
+            Close
+          </button>
+        </div>
+      )}
+      {beingPlaced && mayPlace && !plots.has(placing ?? "") && !selected && !panel && (
         <PlotPicker
           key={placing}
           campaign={beingPlaced}
           owners={owners}
-          current={plots.get(placing ?? "")}
-          chosen={chosen}
+          known={plotsKnown}
+          chosen={pick}
           onChoose={setChosen}
-          onDone={() => {
+          style={floor}
+          onStyle={setFloor}
+          onDone={(built) => {
+            // It stands at once; the chain is asked again to make sure it stays.
+            if (placing) setJustBuilt((made) => ({ ...made, [placing]: built }));
             setPlacing(null);
+            setChosen(null);
             noted();
+            scene.current?.focusRoom("annex");
           }}
           onCancel={() => setPlacing(null)}
         />

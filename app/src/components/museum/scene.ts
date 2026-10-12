@@ -106,6 +106,7 @@ export class MuseumScene {
   // The free plots of the annex, shown and pickable only while a creator is choosing one.
   private readonly plotRoot = new THREE.Group();
   private plotPick: THREE.Object3D[] = [];
+  private plotTags: { x: number; z: number; tag: HTMLDivElement }[] = [];
   private readonly plotShape = new THREE.PlaneGeometry(PLOT_SIZE - 0.2, PLOT_SIZE - 0.2).rotateX(-Math.PI / 2);
   private readonly plotFree = new THREE.MeshBasicMaterial({ color: LIME, transparent: true, opacity: 0.3, depthWrite: false });
   private readonly plotChosen = new THREE.MeshBasicMaterial({ color: LIME, transparent: true, opacity: 0.85, depthWrite: false });
@@ -890,9 +891,13 @@ export class MuseumScene {
    * Shows the free plots of the annex so one can be picked, with the chosen one marked, or
    * hides them again when given `null`.
    */
-  setPlacing(free: number[] | null, chosen: number | null) {
+  setPlacing(free: number[] | null, chosen: number | null, floor = LIME) {
     this.plotRoot.clear();
     this.plotPick = [];
+    for (const tag of this.plotTags) tag.tag.remove();
+    this.plotTags = [];
+    // The chosen plot is shown in the colour its floor would have.
+    this.plotChosen.color.set(floor);
     for (const index of free ?? []) {
       const plot = PLOTS[index];
       if (!plot) continue;
@@ -901,6 +906,14 @@ export class MuseumScene {
       mesh.userData.exhibit = `@plot:${index}`;
       this.plotRoot.add(mesh);
       this.plotPick.push(mesh);
+      // Its number, the same one the plan beside the floor uses.
+      const tag = document.createElement("div");
+      tag.className = `absolute left-0 top-0 border px-1.5 py-0.5 font-mono text-xs font-semibold ${
+        index === chosen ? "border-carbon bg-lime text-carbon" : "border-lime/70 bg-carbon/80 text-lime"
+      }`;
+      tag.textContent = String(index + 1);
+      this.labels.appendChild(tag);
+      this.plotTags.push({ x: plot.x, z: plot.z, tag });
     }
     this.dirty = true;
   }
@@ -1210,12 +1223,16 @@ export class MuseumScene {
       const at = this.project(station.x, 2.3, station.z);
       tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     });
+    for (const plot of this.plotTags) {
+      const at = this.project(plot.x, 0.1, plot.z);
+      plot.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -50%)`;
+    }
     for (const mark of this.marks) {
       const at = this.project(mark.x, mark.y, mark.z);
       mark.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     }
     // With signposts up, the usual small labels would only be in their way.
-    const quiet = this.marks.length > 0;
+    const quiet = this.marks.length > 0 || this.plotTags.length > 0;
     for (const wanderer of this.wanderers.values()) {
       const shown = readable && !this.selected && !quiet;
       wanderer.tag.classList.toggle("hidden", !shown);
@@ -1307,6 +1324,9 @@ export class MuseumScene {
       this.handlers.onSelect(id);
       return;
     }
+    // While a plot is being chosen, a click that misses the plots does nothing: walking off
+    // would take the view away from them.
+    if (this.plotPick.length > 0) return;
     if (this.selected) this.handlers.onSelect(null);
     const spot = this.floorUnder(event);
     if (spot && canStand(spot.x, spot.z, this.blocked)) {

@@ -3,7 +3,7 @@
  * and says which claims count. It can also write one, signed by a key from `.keys/`:
  *
  *   RPC_URL=https://api.devnet.solana.com npx tsx scripts/notes.ts
- *   ... scripts/notes.ts plot <key> <campaign> <plot> <style>    a negative plot gives it up
+ *   ... scripts/notes.ts plot <key> <campaign> <plot> <style>    a room is built once
  *   ... scripts/notes.ts react <key> <campaign> <want|clever|watching>
  *
  * A claim only counts when `<key>` is the campaign's creator, exactly as in the app.
