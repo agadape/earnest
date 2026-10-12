@@ -88,10 +88,16 @@ Rooms follow the campaign's own state and nothing else:
   picked from the title and the address, and the panel says so.
 - **Rooms have a fixed number of places** (8, 6, 6 and 12). The newest campaigns are hung; the
   rest are counted in the room's label and found in the catalog.
-- **Other visitors are not shown.** There is no shared presence. The figure with the label is
-  the person looking: a guest, or a connected wallet carrying its address. The dozen or so
-  other figures strolling the rooms are scenery, like the trees outside; they stand for nobody,
-  and the page says so next to the directory. The lit seats in front of an exhibit are real: they are the seats taken on chain.
+- **Presence is light and unchecked.** Every open museum posts where its visitor stands to
+  `/api/presence` once a second and gets the others back; they are drawn with a name over
+  them. It lives in Vercel's runtime cache, one short-lived entry per visitor, so nothing is
+  stored after a visit and there is no history. A name is whatever the browser sent: a short
+  wallet address or the word Guest. Nobody signs anything to be shown, so a figure's name
+  proves nothing about who it is, and positions are a second old. It was tested with two and
+  three callers at once, a guest and a wallet, on the live site; it was not load tested. The
+  unlabelled figures strolling the rooms are scenery.
+- **The board and the desk replaced two pages.** `/catalog` and `/new` redirect into the
+  museum, where the campaign board and the curator's desk open as panels over the floor.
 - **Walking was tested as rules, not watched.** The tests step a visitor across a full museum.
   The browser used for checking does not run animation frames in the background, so nobody has
   yet watched the figure walk on this machine.
