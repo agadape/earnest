@@ -18,17 +18,20 @@ export function Header() {
   const usingDemoWallet = publicKey !== null && wallet?.adapter.name === DEMO_WALLET_NAME;
 
   return (
-    <header className="z-30 border-b border-stone-200 bg-white/90 backdrop-blur sm:sticky sm:top-0">
+    <header className="z-30 border-b border-black bg-carbon text-paper sm:sticky sm:top-0">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:gap-x-8 sm:px-6">
         <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
           <Mark className="h-6 w-6" />
           {BRAND}
         </Link>
-        <nav className="order-last flex w-full gap-6 text-sm text-stone-600 sm:order-none sm:w-auto">
-          <Link href="/" className="hover:text-stone-900">
-            Campaigns
+        <nav className="order-last flex w-full gap-6 text-sm text-paper/70 sm:order-none sm:w-auto">
+          <Link href="/" className="hover:text-lime">
+            Museum
           </Link>
-          <Link href="/new" className="hover:text-stone-900">
+          <Link href="/catalog" className="hover:text-lime">
+            Catalog
+          </Link>
+          <Link href="/new" className="hover:text-lime">
             Start a campaign
           </Link>
         </nav>
@@ -36,7 +39,7 @@ export function Header() {
           {publicKey && (
             <p className="text-right text-sm leading-tight">
               <span className="block font-semibold">{balance === null ? "…" : usd(balance)}</span>
-              <span className="block text-xs text-stone-500">
+              <span className="block text-xs text-paper/60">
                 {DEMO_WALLET_ENABLED ? "demo dollars" : "balance"}
               </span>
             </p>
@@ -45,7 +48,7 @@ export function Header() {
         </div>
       </div>
       {DEMO_WALLET_ENABLED && publicKey && (
-        <div className="flex flex-wrap items-center justify-center gap-x-3 border-t border-accent-line bg-accent-soft px-4 py-1.5 text-xs text-accent-ink">
+        <div className="flex flex-wrap items-center justify-center gap-x-3 bg-lime px-4 py-1.5 text-xs text-carbon">
           <p>
             {usingDemoWallet
               ? "Demo wallet: everything here is play money."

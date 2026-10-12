@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { CampaignList } from "@/components/campaign-list";
@@ -18,7 +19,9 @@ const STEPS = [
   },
 ];
 
-export default function Home() {
+export const metadata: Metadata = { title: "Catalog" };
+
+export default function Catalog() {
   return (
     <div className="space-y-12 sm:space-y-16">
       <section className="max-w-2xl">

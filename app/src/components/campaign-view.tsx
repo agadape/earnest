@@ -15,6 +15,7 @@ import {
 } from "@/components/campaign-panels";
 import { CreatorRecordLine } from "@/components/creator-record";
 import { CreatorUpdatesCard } from "@/components/creator-updates";
+import { SEAT_PLAN_LIMIT, SeatPlan } from "@/components/seat-plan";
 import { Share } from "@/components/share";
 import { SeatTradesCard } from "@/components/seat-trades";
 import { Bar, Card, Notice, StatusBadge, Tag } from "@/components/ui";
@@ -55,7 +56,11 @@ function parseAddress(text: string): PublicKey | null {
   }
 }
 
-export function CampaignView({ address }: { address: string }) {
+/**
+ * `compact` is for showing a campaign in a narrow column, such as the museum's exhibit panel:
+ * one column whatever the width of the window.
+ */
+export function CampaignView({ address, compact = false }: { address: string; compact?: boolean }) {
   const program = useProgram();
   const now = useNow();
   const { publicKey } = useWallet();
@@ -123,6 +128,7 @@ export function CampaignView({ address }: { address: string }) {
       own={own}
       viewer={publicKey}
       now={now}
+      compact={compact}
     />
   );
 }
@@ -144,6 +150,7 @@ function Loaded({
   own,
   viewer,
   now,
+  compact,
 }: {
   campaign: Campaign;
   pledges: Pledge[];
@@ -151,6 +158,7 @@ function Loaded({
   own: Pledge | null | undefined;
   viewer: PublicKey | null;
   now: number;
+  compact: boolean;
 }) {
   const address = campaign.address.toBase58();
   const wallet = viewer?.toBase58() ?? null;
@@ -218,7 +226,9 @@ function Loaded({
     <div className="space-y-8">
       <header>
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <h1 className="min-w-0 break-words text-3xl font-semibold leading-tight tracking-tight">
+          <h1
+            className={`min-w-0 break-words font-semibold leading-tight tracking-tight ${compact ? "text-2xl" : "text-3xl"}`}
+          >
             {campaign.title || "Untitled campaign"}
           </h1>
           <StatusBadge status={status} />
@@ -247,12 +257,16 @@ function Loaded({
               seats taken
             </p>
             <div className="mt-2">
-              <Bar
-                value={campaign.backers}
-                max={campaign.targetBackers}
-                label="Seats taken"
-                tone={status === "funding" || status === "building" ? "accent" : "muted"}
-              />
+              {campaign.targetBackers <= SEAT_PLAN_LIMIT ? (
+                <SeatPlan campaign={campaign} pledges={pledges} viewer={viewer} status={status} />
+              ) : (
+                <Bar
+                  value={campaign.backers}
+                  max={campaign.targetBackers}
+                  label="Seats taken"
+                  tone={status === "funding" || status === "building" ? "accent" : "muted"}
+                />
+              )}
             </div>
           </div>
           <Fact label="A seat costs" value={usd(campaign.price)} />
@@ -260,7 +274,9 @@ function Loaded({
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
+      <div
+        className={`grid gap-6 ${compact ? "" : "lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start"}`}
+      >
         <div className="min-w-0 space-y-6">
           {status === "funding" && <FundingPanel {...panel} />}
           {status === "building" && <BuildingPanel {...panel} />}

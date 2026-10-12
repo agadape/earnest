@@ -7,7 +7,12 @@
 
 /* One accent, used for the things a person can do and for money coming back to them. */
 @theme {
-  --color-paper: #f8f7f4;
+  --color-paper: #f0efe7;
+  /* The museum: its concrete, its one signal colour, and the grey of its fittings. */
+  --color-carbon: #171917;
+  --color-lime: #d8f59a;
+  --color-machine: #777b73;
+  --color-signal: #ff6338;
   --color-accent: #0b6e4f;
   --color-accent-strong: #095a41;
   --color-accent-ink: #0a4634;
