@@ -4,19 +4,6 @@
  * people, how exhibits print, and how a pledge is celebrated.
  */
 export const VISUAL = {
-  // ----- Speed ---------------------------------------------------------------------------
-  // These are set for speed over looks. Each one that is turned back up costs frames.
-  /** Smoothed edges. */
-  smooth: false,
-  /** The most picture pixels per pixel of the page. */
-  sharpness: 1,
-  /** Cast shadows. Without them people still have their blob underfoot. */
-  shadows: false,
-  /** How many past visitors stroll at most, how often they are redrawn, how long they stand. */
-  strollers: 5,
-  strollFrames: 12,
-  strollRest: 9,
-
   // ----- Light ---------------------------------------------------------------------------
   exposure: 1.1,
   sky: "#d6e4ff",
@@ -69,7 +56,7 @@ export const VISUAL = {
   cheerMerge: 3,
   cheerSeconds: 3,
   /** Pieces of confetti in one celebration, before a modest machine's share is taken. */
-  confetti: 48,
+  confetti: 96,
   confettiColors: ["#d8f59a", "#0b6e4f", "#d9ab35", "#f0efe7", "#6fa58c"],
   beamColor: "#d8f59a",
   /** How near a figure has to stand to an exhibit to hop when it is pledged to. */
