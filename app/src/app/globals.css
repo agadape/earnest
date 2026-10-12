@@ -302,3 +302,24 @@ dialog::backdrop {
 .gallery h1 {
   display: none;
 }
+
+/* The reminder that a campaign has no room yet drops in and then breathes, so it is seen. */
+.build-nudge {
+  animation: build-nudge-in 0.4s ease-out both, build-nudge 2.4s ease-in-out 0.4s infinite;
+}
+@keyframes build-nudge-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+@keyframes build-nudge {
+  50% {
+    box-shadow: 0 0 0 8px rgb(216 245 154 / 0.35), 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .build-nudge {
+    animation: none;
+  }
+}

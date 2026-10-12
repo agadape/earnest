@@ -121,6 +121,11 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const [panel, setPanel] = useState<Panel | null>(null);
   const [creator, setCreator] = useState<string | null>(null);
   const [untouched, setUntouched] = useState(true);
+  // Whether the words about the room are laid over the left of the floor. Folded away, only
+  // the room's name is left, and the floor is all picture.
+  const [notes, setNotes] = useState(false);
+  // The reminder that one of the visitor's campaigns has no room yet, until they wave it away.
+  const [reminded, setReminded] = useState(true);
   // The introduction: which scene it is at, or `null` when it is not playing.
   const [intro, setIntro] = useState<number | null>(null);
   // Build mode: the campaign whose creator is choosing a plot, and the plot picked so far.
@@ -260,12 +265,16 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     if (!sceneId) return;
     // The room's name and its list sit over the left of the floor on a wide window.
     // During the introduction the lower black bar is the taller one; what is looked at sits above it.
-    scene.current?.setInsets(intro === null && window.matchMedia(WIDE).matches ? 340 : 0, 0, intro === null ? 0 : 110);
+    scene.current?.setInsets(
+      intro === null && notes && window.matchMedia(WIDE).matches ? 340 : 0,
+      0,
+      intro === null ? 0 : 110,
+    );
     scene.current?.setSelected(selected);
     // The chamber covers the whole floor; there is no point drawing what cannot be seen.
     scene.current?.setPaused(selected !== null);
     // Depends on the signature too: an open exhibit that changes rooms is followed there.
-  }, [sceneId, selected, signature, intro]);
+  }, [sceneId, selected, signature, intro, notes]);
 
   useEffect(() => {
     if (sceneId) scene.current?.setVisitor(publicKey ? shortAddress(publicKey) : null);
@@ -545,6 +554,10 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   // Something to show at the end of the introduction: an idea that is still taking pledges.
   const firstIdea = museum?.exhibits.find((exhibit) => exhibit.status === "funding")?.id;
   const mine = viewer ? (campaigns ?? []).filter((campaign) => campaign.creator.toBase58() === viewer) : [];
+  // The newest of the visitor's own campaigns that stands in no room of its own.
+  const roomless = [...mine]
+    .sort((a, b) => (a.id === b.id ? 0 : a.id > b.id ? -1 : 1))
+    .find((campaign) => !plots.has(campaign.address.toBase58()));
   const beingPlaced = placing ? campaigns?.find((campaign) => campaign.address.toBase58() === placing) : undefined;
   const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
   const station = near ? STATIONS.find((entry) => entry.id === near) : undefined;
@@ -564,18 +577,42 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
       <div
         aria-hidden
-        className={`pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem] ${intro !== null ? "invisible" : ""}`}
+        className={`pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem] ${intro !== null || !notes ? "invisible" : ""}`}
       />
       {/* What a building cannot say: where you are, and what hangs here. Put away during
           the tutorial, which wants one thing read and one thing done. */}
       <div
         className={`pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6 ${intro !== null ? "invisible" : ""}`}
       >
-        <div className="pointer-events-auto max-w-sm">
-          <p className="font-mono text-xs uppercase tracking-widest text-lime">
-            Room {current.code} · {museum ? museum.counts[room] : "…"}{" "}
-            {museum?.counts[room] === 1 ? "exhibit" : "exhibits"}
-          </p>
+        {!notes && (
+          <button
+            type="button"
+            aria-expanded={false}
+            onClick={() => setNotes(true)}
+            className="pointer-events-auto flex w-max max-w-full items-center gap-3 border border-paper/30 bg-carbon/85 px-3 py-2 text-left hover:border-lime focus-visible:outline-2 focus-visible:outline-lime"
+          >
+            <span className="font-mono text-sm font-semibold text-lime">{current.code}</span>
+            <span className="text-sm font-semibold uppercase tracking-tight">{current.name}</span>
+            <span className="font-mono text-[11px] uppercase tracking-wider text-paper/60">
+              {museum ? museum.counts[room] : "…"} · show list ▸
+            </span>
+          </button>
+        )}
+        <div className={`pointer-events-auto max-w-sm ${notes ? "" : "hidden"}`}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-mono text-xs uppercase tracking-widest text-lime">
+              Room {current.code} · {museum ? museum.counts[room] : "…"}{" "}
+              {museum?.counts[room] === 1 ? "exhibit" : "exhibits"}
+            </p>
+            <button
+              type="button"
+              aria-expanded
+              onClick={() => setNotes(false)}
+              className="border border-paper/30 px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-paper/70 hover:border-lime hover:text-lime"
+            >
+              ◂ Hide
+            </button>
+          </div>
           <h1 className="mt-1 text-2xl font-semibold uppercase leading-none tracking-tight sm:text-5xl">
             {current.name}
           </h1>
@@ -694,7 +731,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
                 </button>
               </li>
             </ul>
-            <p className="mt-2 hidden max-w-md text-xs leading-5 text-paper/60 sm:block">
+            <p className={`mt-2 hidden max-w-md text-xs leading-5 text-paper/60 ${notes ? "sm:block" : ""}`}>
               <span className="font-mono text-lime">{here ?? 1} here now.</span> You walk as{" "}
               <span className="font-mono text-paper">{name}</span>; a figure with a bright name over
               it is another visitor here now. The ones strolling with a faint address are wallets
@@ -733,6 +770,36 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         </div>
       </div>
 
+      {roomless && reminded && !covered && !placing && (
+        <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center px-4">
+          <div
+            role="status"
+            className="build-nudge pointer-events-auto flex max-w-full flex-wrap items-center gap-x-4 gap-y-2 border-2 border-carbon bg-lime px-4 py-3 text-carbon shadow-2xl"
+          >
+            <p className="min-w-0 text-sm leading-5">
+              <span className="block font-mono text-[11px] font-semibold uppercase tracking-wider">
+                Your campaign has no room yet
+              </span>
+              <span className="block truncate font-semibold">{roomless.title || "Untitled campaign"}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => place(roomless.address.toBase58())}
+              className="h-10 bg-carbon px-4 font-mono text-xs font-semibold uppercase tracking-wider text-lime hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-carbon"
+            >
+              Build it a room
+            </button>
+            <button
+              type="button"
+              aria-label="Not now"
+              onClick={() => setReminded(false)}
+              className="flex h-8 w-8 items-center justify-center border border-carbon/40 text-lg leading-none hover:bg-carbon hover:text-lime"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       {(nearby || station) && !covered && (
         <div className="pointer-events-none absolute inset-x-0 bottom-24 z-10 flex justify-center px-4 sm:bottom-28">
           <button
