@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
 
-import { CampaignView } from "@/components/campaign-view";
+import { Museum } from "@/components/museum/museum";
 import { BRAND } from "@/lib/brand";
 import { campaignPreview } from "@/lib/server/preview";
 
@@ -41,15 +41,14 @@ async function PerRequest() {
 }
 
 export default function CampaignPage({ params }: PageProps<"/campaign/[address]">) {
-  // The address is only known per request, so it is read inside the boundary and the rest of
-  // the page can be served as a ready-made shell. The campaign itself loads in the browser.
+  // A campaign has no page of its own: this address, the one that gets shared, opens the museum
+  // with that exhibit already taken into the chamber. The address is only known per request,
+  // so it is read inside the boundary.
   return (
     <>
-      <Suspense
-        fallback={<div aria-busy className="h-72 animate-pulse rounded-2xl bg-stone-200/60" />}
-      >
+      <Suspense fallback={<div className="absolute inset-0 bg-carbon" />}>
         {params.then(({ address }) => (
-          <CampaignView address={address} />
+          <Museum exhibit={address} />
         ))}
       </Suspense>
       <Suspense>

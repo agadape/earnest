@@ -1,11 +1,14 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { PublicKey } from "@solana/web3.js";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
+import { useCreatorCampaigns } from "@/components/creator-record";
 import { Frame } from "@/components/museum/chamber";
 import type { Inspector } from "@/components/museum/inspector";
 import { NewCampaignForm } from "@/components/new-campaign-form";
 import { formatDuration, shortAddress, usd } from "@/lib/format";
+import { describeRecord, recordOf } from "@/lib/record";
 import { type Kind, kindOf, STATUS_WORDS } from "@/lib/museum/plan";
 import { buildEnd, type Campaign, type Status, statusAt } from "@/lib/tanda-jadi";
 
@@ -43,6 +46,37 @@ function Overlay({
         </div>
       </Frame>
     </section>
+  );
+}
+
+/** One campaign as a card to press: its state, its name, and the one line that matters now. */
+function Card({
+  campaign,
+  now,
+  onOpen,
+}: {
+  campaign: Campaign;
+  now: number;
+  onOpen: (address: string) => void;
+}) {
+  const status = statusAt(campaign, now);
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(campaign.address.toBase58())}
+      className="block h-full w-full border border-paper/20 bg-paper/[0.03] p-3 text-left hover:border-lime hover:bg-lime/10 focus-visible:border-lime focus-visible:outline-none"
+    >
+      <span className="font-mono text-[10px] uppercase tracking-widest text-lime">{STATUS_WORDS[status]}</span>
+      <span className="mt-1 block text-sm font-semibold leading-5">{campaign.title || "Untitled campaign"}</span>
+      <span className="mt-2 block font-mono text-xs text-paper/65">
+        {campaign.backers}/{campaign.targetBackers} seats · {usd(campaign.price)} ·{" "}
+        {status === "funding"
+          ? `${formatDuration(campaign.deadline - now)} left`
+          : status === "building"
+            ? `${formatDuration(buildEnd(campaign) - now)} of building left`
+            : `by ${shortAddress(campaign.creator)}`}
+      </span>
+    </button>
   );
 }
 
@@ -119,40 +153,124 @@ export function Board({
         </div>
       </div>
       <ol className="thin-scroll grid min-h-0 flex-1 content-start gap-2 overflow-y-auto px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3">
-        {found.map((campaign) => {
-          const status = statusAt(campaign, now);
-          const address = campaign.address.toBase58();
-          return (
-            <li key={address}>
-              <button
-                type="button"
-                onClick={() => onOpen(address)}
-                className="block h-full w-full border border-paper/20 bg-paper/[0.03] p-3 text-left hover:border-lime hover:bg-lime/10 focus-visible:border-lime focus-visible:outline-none"
-              >
-                <span className="font-mono text-[10px] uppercase tracking-widest text-lime">
-                  {STATUS_WORDS[status]}
-                </span>
-                <span className="mt-1 block text-sm font-semibold leading-5">
-                  {campaign.title || "Untitled campaign"}
-                </span>
-                <span className="mt-2 block font-mono text-xs text-paper/65">
-                  {campaign.backers}/{campaign.targetBackers} seats · {usd(campaign.price)} ·{" "}
-                  {status === "funding"
-                    ? `${formatDuration(campaign.deadline - now)} left`
-                    : status === "building"
-                      ? `${formatDuration(buildEnd(campaign) - now)} of building left`
-                      : `by ${shortAddress(campaign.creator)}`}
-                </span>
-              </button>
-            </li>
-          );
-        })}
+        {found.map((campaign) => (
+          <li key={campaign.address.toBase58()}>
+            <Card campaign={campaign} now={now} onOpen={onOpen} />
+          </li>
+        ))}
         {found.length === 0 && (
           <li className="px-1 py-6 font-mono text-sm text-paper/60 sm:col-span-2 lg:col-span-3">
             Nothing on the board matches that.
           </li>
         )}
       </ol>
+    </Overlay>
+  );
+}
+
+/**
+ * A creator's file: everything one wallet has opened here and how each ended. Read from the
+ * campaigns themselves, so it says what happened and nothing about who the wallet is.
+ */
+export function CreatorRecord({
+  address,
+  now,
+  onOpen,
+  onClose,
+}: {
+  address: string;
+  now: number | null;
+  onOpen: (address: string) => void;
+  onClose: () => void;
+}) {
+  const creator = useMemo(() => {
+    try {
+      return new PublicKey(address);
+    } catch {
+      return null;
+    }
+  }, [address]);
+  const campaigns = useCreatorCampaigns(creator);
+  const record = campaigns && now !== null ? recordOf(campaigns, now) : null;
+  const totals: { label: string; value: number; note?: string }[] = record
+    ? [
+        { label: "Campaigns opened", value: record.opened },
+        {
+          label: "Ran to the end",
+          value: record.completed,
+          note: record.earned > 0n ? `${usd(record.earned)} reached the creator` : undefined,
+        },
+        {
+          label: "Didn't fill",
+          value: record.failed,
+          note: record.bonuses > 0n ? `${usd(record.bonuses)} paid to early backers in bonuses` : undefined,
+        },
+        {
+          label: "Stopped by backers",
+          value: record.braked,
+          note: record.bondsLost > 0n ? `${usd(record.bondsLost)} of bonds went to backers` : undefined,
+        },
+      ]
+    : [];
+  const word = (text: string) => <p className="px-5 py-6 font-mono text-sm text-paper/70">{text}</p>;
+
+  return (
+    <Overlay
+      label="Creator record"
+      kicker="From the archive · a creator's file"
+      title={creator ? `Creator ${shortAddress(creator)}` : "Creator record"}
+      onClose={onClose}
+    >
+      {!creator ? (
+        word("That is not a wallet address. Check the link and try again.")
+      ) : campaigns === null ? (
+        word("The network did not answer. Close this and try again in a moment.")
+      ) : !campaigns || !record || now === null ? (
+        <p aria-busy className="px-5 py-6 font-mono text-sm uppercase tracking-widest text-paper/60">
+          Fetching the file…
+        </p>
+      ) : (
+        <div className="thin-scroll min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
+          <div>
+            <p className="break-all font-mono text-sm text-paper">{address}</p>
+            <p className="mt-1 font-mono text-xs uppercase tracking-wider text-lime">
+              {campaigns.length === 0 ? "No campaigns from this wallet" : describeRecord(record)}
+            </p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-paper/70">
+              Everything here is read from the campaigns this wallet opened. A campaign that
+              didn&apos;t fill is not a black mark: it means the creator asked before building,
+              and paid the bonus they promised. Two things this cannot tell you: a creator can
+              start over with a new wallet, so an empty file says nothing either way, and
+              nothing stops a creator from backing a small campaign of their own to the end.
+            </p>
+          </div>
+          {campaigns.length > 0 && (
+            <>
+              <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                {totals.map(({ label, value, note }) => (
+                  <div key={label} className="border border-paper/20 bg-paper/[0.03] p-4">
+                    <dt className="font-mono text-[11px] uppercase tracking-widest text-lime">{label}</dt>
+                    <dd className="mt-1 font-mono text-3xl font-semibold text-paper">{value}</dd>
+                    {note && <dd className="mt-1 text-xs leading-5 text-paper/65">{note}</dd>}
+                  </div>
+                ))}
+              </dl>
+              <section aria-labelledby="creator-campaigns">
+                <h2 id="creator-campaigns" className="font-mono text-xs uppercase tracking-widest text-paper/60">
+                  Their campaigns, newest first
+                </h2>
+                <ol className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {campaigns.map((campaign) => (
+                    <li key={campaign.address.toBase58()}>
+                      <Card campaign={campaign} now={now} onOpen={onOpen} />
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </>
+          )}
+        </div>
+      )}
     </Overlay>
   );
 }

@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-import { canStand, CORRIDORS, ENTRANCE, type Room, type RoomId, ROOMS } from "@/lib/museum/plan";
+import { CORRIDORS, ENTRANCE, type Room, type RoomId, ROOMS } from "@/lib/museum/plan";
 
 const GRASS = "#8cc070";
 const PAVING = "#e6dcc6";
@@ -241,7 +241,7 @@ export function buildWorld(scene: THREE.Scene) {
     }
   }
   const near = trees.length;
-  for (let tries = 0; tries < 900 && trees.length < near + 110; tries++) {
+  for (let tries = 0; tries < 900 && trees.length < near + 40; tries++) {
     const x = -48 + random() * 100;
     const z = -48 + random() * 100;
     const onSquare = x > square.minX - 2 && x < square.maxX + 2 && z > square.minZ - 2 && z < square.maxZ + 2;
@@ -249,7 +249,7 @@ export function buildWorld(scene: THREE.Scene) {
     if (!onSquare && !onPath && clear(x, z)) trees.push({ x, z, size: 1 + random() * 0.9 });
   }
   const trunkShape = new THREE.CylinderGeometry(0.16, 0.22, 1, 6);
-  const crownShape = new THREE.IcosahedronGeometry(1, 1);
+  const crownShape = new THREE.IcosahedronGeometry(1, 0);
   const bark = matte("#7a5a3c");
   const foliage = matte("#ffffff", 1);
   const matrix = new THREE.Matrix4();
@@ -613,88 +613,3 @@ export function buildWorld(scene: THREE.Scene) {
   }
 }
 
-// -----------------------------------------------------------------------------------------------
-// Set dressing that moves
-// -----------------------------------------------------------------------------------------------
-
-const SHIRTS = ["#e4572e", "#17bebb", "#ffc914", "#76b041", "#5b5f97", "#ff8cc6", "#2e86ab", "#f4f1de"];
-const SKINS = ["#f1c9a5", "#d9a37a", "#b97a56", "#8d5a3b"];
-
-interface Stroller {
-  figure: THREE.Group;
-  room: Room;
-  goal: { x: number; z: number };
-  wait: number;
-  speed: number;
-}
-
-/**
- * Figures that wander the rooms so the museum does not feel empty. They are scenery: they
- * stand for nobody, hold no wallet and never touch a campaign, and the page says so.
- */
-export class Strollers {
-  private readonly figures: Stroller[] = [];
-  private readonly random = seeded(99);
-
-  constructor(scene: THREE.Scene, count: number) {
-    for (let index = 0; index < count; index++) {
-      const room = ROOMS[index % ROOMS.length];
-      const figure = new THREE.Group();
-      const shirt = new THREE.MeshStandardMaterial({ color: SHIRTS[index % SHIRTS.length], roughness: 0.8 });
-      const skin = new THREE.MeshStandardMaterial({ color: SKINS[index % SKINS.length], roughness: 0.8 });
-      const legs = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.1, 0.12, 0.3, 10),
-        new THREE.MeshStandardMaterial({ color: "#3b3f4a", roughness: 0.9 }),
-      );
-      legs.position.y = 0.15;
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.34, 12), shirt);
-      body.position.y = 0.47;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 10), skin);
-      head.position.y = 0.76;
-      for (const mesh of [legs, body, head]) mesh.castShadow = true;
-      figure.add(legs, body, head);
-      const start = this.somewhere(room, []);
-      figure.position.set(start.x, 0, start.z);
-      scene.add(figure);
-      this.figures.push({ figure, room, goal: start, wait: this.random() * 4, speed: 0.7 + this.random() * 0.5 });
-    }
-  }
-
-  private somewhere(room: Room, exhibits: { x: number; z: number }[]) {
-    for (let tries = 0; tries < 30; tries++) {
-      const x = room.x + (this.random() - 0.5) * (room.width - 2.4);
-      const z = room.z + (this.random() - 0.5) * (room.depth - 2.4);
-      if (canStand(x, z, exhibits)) return { x, z };
-    }
-    return { x: room.x, z: room.z };
-  }
-
-  /** Moves everyone on by one frame. Each strolls to a spot, looks about for a while, and picks another. */
-  step(seconds: number, time: number, exhibits: { x: number; z: number }[]) {
-    for (const stroller of this.figures) {
-      const { figure } = stroller;
-      if (stroller.wait > 0) {
-        stroller.wait -= seconds;
-        if (stroller.wait <= 0) stroller.goal = this.somewhere(stroller.room, exhibits);
-        continue;
-      }
-      const dx = stroller.goal.x - figure.position.x;
-      const dz = stroller.goal.z - figure.position.z;
-      const left = Math.hypot(dx, dz);
-      const reach = stroller.speed * seconds;
-      if (left <= reach + 0.02) {
-        stroller.wait = 2 + this.random() * 6;
-        continue;
-      }
-      const x = figure.position.x + (dx / left) * reach;
-      const z = figure.position.z + (dz / left) * reach;
-      // Anything in the way ends the stroll; the next one starts from here.
-      if (!canStand(x, z, exhibits)) {
-        stroller.wait = 0.5 + this.random() * 2;
-        continue;
-      }
-      figure.position.set(x, Math.abs(Math.sin(time * 9 + figure.id)) * 0.03, z);
-      figure.rotation.y = Math.atan2(dx, dz);
-    }
-  }
-}

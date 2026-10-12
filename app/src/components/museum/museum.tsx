@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CampaignList, NetworkNotice, SetupNotice } from "@/components/campaign-list";
+import { CampaignView } from "@/components/campaign-view";
 import { Chamber } from "@/components/museum/chamber";
-import { Board, DesignMode } from "@/components/museum/hud";
+import { Board, CreatorRecord, DesignMode } from "@/components/museum/hud";
 import type { Direction, MuseumScene } from "@/components/museum/scene";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
@@ -15,7 +16,9 @@ import { arrange, type Exhibit, type RoomId, ROOMS, STATIONS, STATUS_WORDS } fro
 import { buildEnd, fetchCampaigns } from "@/lib/tanda-jadi";
 
 const WIDE = "(min-width: 1024px)";
-type Panel = "board" | "design";
+type Panel = "board" | "design" | "record";
+// What `select` is given to open a creator's file: this, then the wallet's address.
+const CREATOR = "@creator:";
 const PANEL_OF: Record<string, Panel> = { "@board": "board", "@desk": "design" };
 
 /** One line under an exhibit's name: what state it is in, in words, and how full it is. */
@@ -50,7 +53,7 @@ function visitorId(): string {
  * building laid over it. Everything a visitor can do here can also be done from the lists
  * beside the floor, without a pointer and without the picture.
  */
-export function Museum() {
+export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhibit?: string; creator?: string }) {
   const program = useProgram();
   const now = useNow();
   const { publicKey } = useWallet();
@@ -89,29 +92,42 @@ export function Museum() {
   const [room, setRoom] = useState<RoomId>("unmade");
   const [selected, setSelected] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [creator, setCreator] = useState<string | null>(null);
+  const [untouched, setUntouched] = useState(true);
   const [near, setNear] = useState<string | null>(null);
   const [here, setHere] = useState<number | null>(null);
   // The plaque at the door: what this place is, for someone who has never heard of it.
   const [atDoor, setAtDoor] = useState(true);
 
-  /** Opens an exhibit, a station's panel, or nothing. The address bar follows. */
+  /** Opens an exhibit, a station's panel, a creator's file, or nothing. The address bar follows. */
   const select = useCallback((id: string | null) => {
-    const station = id ? PANEL_OF[id] : undefined;
+    const who = id?.startsWith(CREATOR) ? id.slice(CREATOR.length) : null;
+    const station: Panel | undefined = who ? "record" : id ? PANEL_OF[id] : undefined;
     setSelected(station ? null : id);
     setPanel(station ?? null);
+    setCreator(who);
+    setUntouched(false);
     try {
       window.history.replaceState(
         null,
         "",
-        station ? `/?${station}=1` : id ? `/?exhibit=${id}` : "/",
+        who ? `/?creator=${who}` : station ? `/?${station}=1` : id ? `/?exhibit=${id}` : "/",
       );
     } catch {}
   }, []);
 
-  // A link can ask for an exhibit, the board or the desk. Links in the header do, and so do
-  // the old addresses of the catalog and the form.
-  const linkedExhibit = params.get("exhibit");
-  const linkedPanel: Panel | null = params.has("board") ? "board" : params.has("design") ? "design" : null;
+  // A link can ask for an exhibit, a creator's file, the board or the desk. Links in the
+  // header do, and so do the addresses that used to be pages of their own.
+  // What the address itself named counts until the visitor opens or closes something.
+  const linkedExhibit = params.get("exhibit") ?? (untouched ? givenExhibit : null) ?? null;
+  const linkedCreator = params.get("creator") ?? (untouched ? givenCreator : null) ?? null;
+  const linkedPanel: Panel | null = linkedCreator
+    ? "record"
+    : params.has("board")
+      ? "board"
+      : params.has("design")
+        ? "design"
+        : null;
   useEffect(() => {
     if (!linkedExhibit && !linkedPanel) return;
     // Arriving by a link is past the door already.
@@ -119,9 +135,10 @@ export function Museum() {
       setAtDoor(false);
       setSelected(linkedExhibit);
       setPanel(linkedExhibit ? null : linkedPanel);
+      setCreator(linkedExhibit ? null : linkedCreator);
     }, 0);
     return () => clearTimeout(timer);
-  }, [linkedExhibit, linkedPanel]);
+  }, [linkedExhibit, linkedPanel, linkedCreator]);
 
   // Start the scene. Where WebGL is missing the list of campaigns takes its place.
   useEffect(() => {
@@ -149,9 +166,11 @@ export function Museum() {
         setSceneId((count) => count + 1);
         // Coming back to this page by a plain link to it means the floor, not whatever was
         // open when it was left.
+        // An address that names an exhibit or a creator keeps what it named.
+        if (window.location.pathname !== "/") return;
         const asked = new URLSearchParams(window.location.search);
         if (!asked.has("exhibit")) setSelected(null);
-        if (!asked.has("board") && !asked.has("design")) setPanel(null);
+        if (!asked.has("board") && !asked.has("design") && !asked.has("creator")) setPanel(null);
       })
       .catch(() => {
         if (!cancelled) setUnsupported(true);
@@ -308,7 +327,20 @@ export function Museum() {
             Nothing is lost: every exhibit is a campaign, and they are all listed below.
           </p>
         </div>
-        <CampaignList searchable />
+        {selected ? (
+          <>
+            <button type="button" onClick={() => select(null)} className="text-sm font-medium underline underline-offset-2">
+              Back to every campaign
+            </button>
+            <CampaignView address={selected} />
+          </>
+        ) : (
+          <CampaignList searchable />
+        )}
+        {panel === "record" && creator && (
+          <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
+        )}
+        {panel === "design" && <DesignMode onOpened={select} onClose={() => select(null)} />}
       </div>
     );
   }
@@ -432,7 +464,7 @@ export function Museum() {
             <p className="mt-2 hidden max-w-md text-xs leading-5 text-paper/60 sm:block">
               <span className="font-mono text-lime">{here ?? 1} here now.</span> You walk as{" "}
               <span className="font-mono text-paper">{name}</span>; a figure with a name over it is
-              another visitor, and the ones without are scenery. Visiting pledges nothing.
+              another visitor. Visiting pledges nothing.
             </p>
           </nav>
 
@@ -565,6 +597,7 @@ export function Museum() {
           exhibit={open}
           now={now}
           onBack={() => select(null)}
+          onCreator={(who) => select(CREATOR + who)}
           onMap={() => {
             select(null);
             scene.current?.overview();
@@ -576,6 +609,9 @@ export function Museum() {
       )}
       {panel === "design" && (
         <DesignMode onOpened={(address) => select(address)} onClose={() => select(null)} />
+      )}
+      {panel === "record" && creator && (
+        <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
       )}
     </div>
   );

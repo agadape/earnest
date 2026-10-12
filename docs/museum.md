@@ -94,10 +94,18 @@ Rooms follow the campaign's own state and nothing else:
   stored after a visit and there is no history. A name is whatever the browser sent: a short
   wallet address or the word Guest. Nobody signs anything to be shown, so a figure's name
   proves nothing about who it is, and positions are a second old. It was tested with two and
-  three callers at once, a guest and a wallet, on the live site; it was not load tested. The
-  unlabelled figures strolling the rooms are scenery.
-- **The board and the desk replaced two pages.** `/catalog` and `/new` redirect into the
-  museum, where the campaign board and the curator's desk open as panels over the floor.
+  three callers at once, a guest and a wallet, on the live site; it was not load tested.
+- **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
+  the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
+  and `/creator/<address>` still answer, because they are the addresses that get shared and
+  the first carries the preview picture, but what they show is the museum with that exhibit in
+  the chamber or that creator's file open. Only where the browser has no 3D does a campaign
+  fall back to plain words. The embed card is the one thing outside: it is made to sit in
+  somebody else's page.
+- **The floor is drawn only when it changes.** Nothing on it moves by itself any more: the
+  strolling figures and the hovering objects were removed, and shadows are drawn once when
+  the exhibits are hung, so figures cast none. A museum nobody is walking through costs no
+  drawing at all. How many frames a second that buys on a given machine was not measured.
 - **Walking was tested as rules, not watched.** The tests step a visitor across a full museum.
   The browser used for checking does not run animation frames in the background, so nobody has
   yet watched the figure walk on this machine.

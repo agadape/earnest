@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type ReactNode, useEffect, useRef } from "react";
 
 import { CampaignView } from "@/components/campaign-view";
@@ -55,6 +54,7 @@ export function Chamber({
   now,
   onBack,
   onMap,
+  onCreator,
 }: {
   address: string;
   /** Missing for a campaign the museum has no floor for; it can still be opened by its link. */
@@ -62,6 +62,8 @@ export function Chamber({
   now: number | null;
   onBack: () => void;
   onMap: () => void;
+  /** Opens the record of the wallet that made this. */
+  onCreator: (creator: string) => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const inspector = useRef<Inspector | null>(null);
@@ -125,9 +127,13 @@ export function Chamber({
             {date && <Fact label={date.label}>{date.value}</Fact>}
             <Fact label="Creator's bond">{usd(bond(campaign))}</Fact>
             <Fact label="Made by">
-              <Link href={`/creator/${campaign.creator.toBase58()}`} className="underline underline-offset-2 hover:text-lime">
+              <button
+                type="button"
+                onClick={() => onCreator(campaign.creator.toBase58())}
+                className="underline underline-offset-2 hover:text-lime"
+              >
                 {shortAddress(campaign.creator)}
-              </Link>
+              </button>
             </Fact>
           </dl>
         </Frame>
@@ -144,11 +150,6 @@ export function Chamber({
           </div>
           <div className="chamber thin-scroll min-h-0 flex-1 px-5 py-5 lg:overflow-y-auto">
             <CampaignView address={address} compact />
-            <p className="mt-6 border-t border-paper/15 pt-4 text-sm">
-              <Link href={`/campaign/${address}`} className="font-medium text-lime hover:underline">
-                Open this exhibit on its own page
-              </Link>
-            </p>
           </div>
         </div>
       </Frame>

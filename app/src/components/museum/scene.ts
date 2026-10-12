@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
-import { buildWorld, FAR_WALL, SKY, Strollers } from "@/components/museum/world";
+import { buildWorld, FAR_WALL, SKY } from "@/components/museum/world";
 import {
   canStand,
   type Exhibit,
@@ -105,15 +105,16 @@ export class MuseumScene {
   private readonly held = new Set<Direction>();
   private following = false;
   private stuck = 0;
-  // Whether anything is happening that deserves every frame. When nothing is, the museum is
-  // drawn twenty times a second, which is plenty for people strolling in the distance.
+  // Whether anything is moving. When nothing is, and nothing has changed, the museum is not
+  // drawn at all: the last picture is still right.
   private lively = true;
+  private dirty = true;
   private paused = false;
-  private tick = 0;
   // Frames in a row that took too long while something was happening.
   private strain = 0;
+  // Whether another visitor is still on the way to where they were last reported.
+  private astir = false;
   private eased = 0;
-  private readonly strollers: Strollers;
 
   // Space the page's own panels cover, so what is looked at is centred in what is left.
   private insetLeft = 0;
@@ -130,12 +131,13 @@ export class MuseumScene {
     // Throws where WebGL is not available; the page shows the catalog instead.
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
     // A sharp screen has four pixels where an ordinary one has one; drawing all of them is
-    // most of what makes this heavy, and at this distance one and a half is hard to tell from two.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    // most of what makes this heavy, and at this distance a little over one is enough.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    // Shadows are redrawn a few times a second, not every frame: almost nothing that casts one moves.
+    // Shadows are drawn once, when the exhibits are hung: nothing that casts one moves.
     this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
     this.renderer.domElement.style.display = "block";
     this.renderer.domElement.style.touchAction = "none";
     host.appendChild(this.renderer.domElement);
@@ -166,7 +168,6 @@ export class MuseumScene {
     this.scene.add(sun, sun.target);
 
     buildWorld(this.scene);
-    this.strollers = new Strollers(this.scene, calm ? 0 : 10);
     this.buildStations();
     this.scene.add(this.exhibitRoot);
 
@@ -188,7 +189,6 @@ export class MuseumScene {
     body.position.y = 0.25;
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 20, 14), this.visitorBody);
     head.position.y = 0.64;
-    body.castShadow = head.castShadow = true;
     const halo = new THREE.RingGeometry(0.3, 0.38, 32);
     halo.rotateX(-Math.PI / 2);
     this.visitorHalo = new THREE.Mesh(halo, new THREE.MeshBasicMaterial({ color: LIME }));
@@ -382,8 +382,6 @@ export class MuseumScene {
       object.scale.setScalar(1.25);
       object.userData.material = material;
       object.userData.rest = material.emissiveIntensity;
-      object.userData.base = top;
-      object.userData.floats = status === "funding";
       group.add(object);
       this.objects.set(exhibit.id, object);
 
@@ -503,6 +501,7 @@ export class MuseumScene {
 
   /** Lights what is pointed at, stood next to or open, and rings it. */
   private light() {
+    this.dirty = true;
     this.hot = this.pointed ?? this.near;
     const hot =
       this.hot && this.hot !== this.selected
@@ -575,6 +574,7 @@ export class MuseumScene {
       this.scene.remove(other.figure);
       other.tag.remove();
       this.others.delete(id);
+      this.dirty = true;
     }
     for (const entry of list) {
       let other = this.others.get(entry.id);
@@ -587,7 +587,6 @@ export class MuseumScene {
         body.position.y = 0.25;
         const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 12), material);
         head.position.y = 0.64;
-        body.castShadow = head.castShadow = true;
         const figure = new THREE.Group();
         figure.add(body, head);
         figure.position.set(entry.x, 0, entry.z);
@@ -602,6 +601,7 @@ export class MuseumScene {
       other.x = entry.x;
       other.z = entry.z;
       other.tag.textContent = entry.name;
+      this.dirty = true;
     }
   }
 
@@ -688,7 +688,7 @@ export class MuseumScene {
   /** Stops drawing while something else covers the whole floor, and starts again after. */
   setPaused(paused: boolean) {
     this.paused = paused;
-    this.lively = true;
+    this.dirty = true;
   }
 
   /**
@@ -696,7 +696,7 @@ export class MuseumScene {
    * shadows. It only ever steps down, so the picture does not flicker between settings.
    */
   private unburden(gap: number) {
-    if (!this.lively || this.eased >= 2) return;
+    if (this.eased >= 2) return;
     this.strain = gap > 1 / 26 ? this.strain + 1 : 0;
     if (this.strain < 45) return;
     this.strain = 0;
@@ -706,6 +706,7 @@ export class MuseumScene {
       this.resize();
     } else {
       this.renderer.shadowMap.enabled = false;
+      this.dirty = true;
       this.scene.traverse((child) => {
         if (child instanceof THREE.Mesh) (child.material as THREE.Material).needsUpdate = true;
       });
@@ -717,12 +718,14 @@ export class MuseumScene {
     this.visitorBody.color.set(wallet ? PAPER : "#a6aaa0");
     this.visitorHalo.visible = wallet !== null;
     this.visitorTag.textContent = wallet ? `You · ${wallet}` : "Guest";
+    this.dirty = true;
   }
 
   setInsets(left: number, right: number, bottom: number) {
     this.insetLeft = left;
     this.insetRight = right;
     this.insetBottom = bottom;
+    this.dirty = true;
   }
 
   zoomBy(factor: number) {
@@ -764,6 +767,7 @@ export class MuseumScene {
     if (this.calm) {
       this.visitor.position.set(point.x, 0, point.z);
       this.path = [];
+      this.dirty = true;
       this.say(roomAt(point.x, point.z));
       return;
     }
@@ -829,6 +833,7 @@ export class MuseumScene {
   private say(room: RoomId) {
     if (room === this.room) return;
     this.room = room;
+    this.dirty = true;
     this.handlers.onRoom(room);
   }
 
@@ -850,6 +855,7 @@ export class MuseumScene {
     const { clientWidth, clientHeight } = this.host;
     if (clientWidth === 0 || clientHeight === 0) return;
     this.renderer.setSize(clientWidth, clientHeight);
+    this.dirty = true;
   }
 
   private project(x: number, y: number, z: number) {
@@ -868,12 +874,25 @@ export class MuseumScene {
       return;
     }
     const gap = Math.max(0, (time - this.last) / 1000);
-    if (!this.lively && gap < 1 / 20) return;
-    const seconds = Math.min(0.06, gap);
     this.last = time;
-    this.unburden(gap);
+    const moving =
+      this.held.size > 0 ||
+      this.path.length > 0 ||
+      this.drag !== null ||
+      this.astir ||
+      this.target.distanceToSquared(this.goal) > 1e-4 ||
+      Math.abs(this.zoom - this.zoomGoal) > 0.02;
+    // Nothing moved and nothing changed: the picture on screen is still the right one.
+    if (!moving && !this.dirty) {
+      this.lively = false;
+      return;
+    }
+    // The first frame after a rest says nothing about how fast this machine is.
+    if (this.lively) this.unburden(gap);
+    this.lively = moving;
+    this.dirty = false;
+    const seconds = Math.min(0.06, gap);
     this.clock += seconds;
-    this.strollers.step(seconds, this.clock, this.blocked);
 
     const walked = this.walk(seconds);
     const position = this.visitor.position;
@@ -906,18 +925,7 @@ export class MuseumScene {
       this.light();
     }
 
-    // What is still looking for backers hovers and turns; what is pointed at turns faster.
     if (!this.calm) {
-      for (const [id, object] of this.objects) {
-        const lively = id === this.hot || id === this.selected;
-        if (object.userData.floats || lively) {
-          object.rotation.y += (lively ? 1.1 : 0.25) * seconds;
-        }
-        if (object.userData.floats) {
-          object.position.y =
-            (object.userData.base as number) + 0.07 + Math.sin(this.clock * 1.6 + object.id) * 0.05;
-        }
-      }
       this.visitor.children[0].position.y = 0.25 + (walked ? Math.abs(Math.sin(this.clock * 13)) * 0.05 : 0);
     }
 
@@ -935,16 +943,7 @@ export class MuseumScene {
     this.camera.lookAt(centre);
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
-    this.tick += 1;
-    if (this.tick % 4 === 0) this.renderer.shadowMap.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
-    this.lively =
-      walked ||
-      this.held.size > 0 ||
-      this.path.length > 0 ||
-      this.drag !== null ||
-      this.target.distanceToSquared(this.goal) > 1e-4 ||
-      Math.abs(this.zoom - this.zoomGoal) > 0.02;
 
     const readable = this.zoom > 16;
     for (const exhibit of this.hung) {
@@ -966,10 +965,12 @@ export class MuseumScene {
       const at = this.project(station.x, 2.3, station.z);
       tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     });
+    this.astir = false;
     for (const other of this.others.values()) {
       const figure = other.figure.position;
       const pull = this.calm ? 1 : 1 - Math.pow(0.002, seconds);
       const moving = Math.hypot(other.x - figure.x, other.z - figure.z) > 0.03;
+      if (moving) this.astir = true;
       figure.x += (other.x - figure.x) * pull;
       figure.z += (other.z - figure.z) * pull;
       figure.y = moving && !this.calm ? Math.abs(Math.sin(this.clock * 11)) * 0.04 : 0;

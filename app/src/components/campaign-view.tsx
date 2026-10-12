@@ -237,7 +237,7 @@ function Loaded({
           <span>
             by{" "}
             <Link
-              href={`/creator/${campaign.creator.toBase58()}`}
+              href={`/?creator=${campaign.creator.toBase58()}`}
               className="font-mono hover:underline"
             >
               {shortAddress(campaign.creator)}

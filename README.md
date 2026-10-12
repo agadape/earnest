@@ -179,7 +179,7 @@ as an offer, with one difference: a sale is a price a buyer and a seller both ac
 Every campaign names the wallet that opened it, so a creator's history can be read straight
 from the chain: how many campaigns they opened, how many ran to the end, how many did not fill
 and what that cost them in bonuses, how many their backers stopped. The app shows it in one
-line under a campaign's title and in full at `/creator/<address>`. A campaign that did not
+line under a campaign's title and in full as a file inside the museum (`/creator/<address>`). A campaign that did not
 fill counts for the creator here, not against them: they asked before building and paid what
 they promised.
 
