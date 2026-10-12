@@ -306,6 +306,43 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     };
   }, [sceneId, name, hasWallet]);
 
+  // The wallets that came before stroll the rooms. This one is written down as having come.
+  const [strollers, setStrollers] = useState<string[]>([]);
+  const visitor = publicKey?.toBase58() ?? null;
+  useEffect(() => {
+    let active = true;
+    const ask = async (wallet: string | null) => {
+      try {
+        const response = await fetch(
+          "/api/visitors",
+          wallet
+            ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wallet }) }
+            : undefined,
+        );
+        const { wallets } = (await response.json()) as { wallets?: string[] };
+        if (active && Array.isArray(wallets)) setStrollers(wallets);
+      } catch {
+        // An empty museum is still a museum.
+      }
+    };
+    ask(visitor);
+    const timer = setInterval(() => ask(null), 60_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [visitor]);
+  const strollerKey = strollers.filter((wallet) => wallet !== visitor).join(",");
+  useEffect(() => {
+    if (!sceneId) return;
+    scene.current?.setWanderers(
+      strollerKey
+        .split(",")
+        .filter(Boolean)
+        .map((wallet) => ({ id: wallet, name: `${wallet.slice(0, 4)}…${wallet.slice(-4)}` })),
+    );
+  }, [sceneId, strollerKey]);
+
   // Walking is done with the keyboard anywhere on the page, except while something is being
   // typed or a control has the keys: a button's own Enter and a text box's letters come first.
   const covered = selected !== null || panel !== null || atDoor;
@@ -548,9 +585,10 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
             </ul>
             <p className="mt-2 hidden max-w-md text-xs leading-5 text-paper/60 sm:block">
               <span className="font-mono text-lime">{here ?? 1} here now.</span> You walk as{" "}
-              <span className="font-mono text-paper">{name}</span>; a figure with a name over it is
-              another visitor. Figures gathered round an exhibit stand for its reactions, one
-              each up to ten; they are nobody.
+              <span className="font-mono text-paper">{name}</span>; a figure with a bright name over
+              it is another visitor here now. The ones strolling with a faint address are wallets
+              that visited before, not people here now. Figures gathered round an exhibit stand
+              for its reactions, one each up to ten; they are nobody.
             </p>
           </nav>
 

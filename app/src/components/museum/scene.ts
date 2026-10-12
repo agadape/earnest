@@ -62,6 +62,19 @@ export interface SceneHandlers {
   onNear(id: string | null): void;
 }
 
+/** A past visitor's figure: where it is going, how long it is standing still, how fast it walks. */
+interface Wanderer {
+  figure: THREE.Group;
+  tag: HTMLDivElement;
+  room: Room;
+  goal: { x: number; z: number };
+  wait: number;
+  speed: number;
+}
+
+// When the only thing moving is the strollers, this many pictures a second is plenty.
+const STROLL_FRAMES = 24;
+
 export class MuseumScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -125,6 +138,8 @@ export class MuseumScene {
   private strain = 0;
   // Whether another visitor is still on the way to where they were last reported.
   private astir = false;
+  // Wallets that visited before, strolling the rooms while their owners are away.
+  private readonly wanderers = new Map<string, Wanderer>();
   private eased = 0;
 
   // Space the page's own panels cover, so what is looked at is centred in what is left.
@@ -662,6 +677,82 @@ export class MuseumScene {
     }
   }
 
+  /**
+   * Shows the wallets that visited before as figures strolling the rooms, each with its
+   * short address. They come and go with the list; they are not people who are here now.
+   */
+  setWanderers(list: { id: string; name: string }[]) {
+    const wanted = new Set(list.map((entry) => entry.id));
+    for (const [id, wanderer] of this.wanderers) {
+      if (wanted.has(id)) continue;
+      this.scene.remove(wanderer.figure);
+      wanderer.tag.remove();
+      this.wanderers.delete(id);
+    }
+    list.forEach((entry, index) => {
+      if (this.wanderers.has(entry.id)) return;
+      // The same wallet always wears the same colour and starts in the same room.
+      let sum = 0;
+      for (const letter of entry.id) sum = (sum * 31 + letter.charCodeAt(0)) % 9973;
+      const cloth = new THREE.MeshStandardMaterial({ color: CROWD_SHIRTS[sum % CROWD_SHIRTS.length], roughness: 0.8 });
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 0.5, 10), cloth);
+      body.position.y = 0.25;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), cloth);
+      head.position.y = 0.63;
+      const figure = new THREE.Group();
+      figure.add(body, head);
+      const room = ROOMS[(sum + index) % ROOMS.length];
+      const start = this.somewhere(room);
+      figure.position.set(start.x, 0, start.z);
+      this.scene.add(figure);
+      const tag = document.createElement("div");
+      tag.className =
+        "absolute left-0 top-0 hidden whitespace-nowrap bg-carbon/55 px-1 py-px font-mono text-[9px] uppercase tracking-wider text-paper/80";
+      tag.textContent = entry.name;
+      this.labels.appendChild(tag);
+      this.wanderers.set(entry.id, { figure, tag, room, goal: start, wait: Math.random() * 5, speed: 0.8 + Math.random() * 0.6 });
+    });
+    this.dirty = true;
+  }
+
+  /** A free spot on a room's floor. */
+  private somewhere(room: Room): { x: number; z: number } {
+    for (let tries = 0; tries < 30; tries++) {
+      const x = room.x + (Math.random() - 0.5) * (room.width - 2.4);
+      const z = room.z + (Math.random() - 0.5) * (room.depth - 2.4);
+      if (canStand(x, z, this.blocked)) return { x, z };
+    }
+    return { x: room.x, z: room.z + 0.2 };
+  }
+
+  /** Moves every stroller on: each walks to a spot, stands a while, and picks another. */
+  private stroll(seconds: number) {
+    for (const wanderer of this.wanderers.values()) {
+      const { figure } = wanderer;
+      if (wanderer.wait > 0) {
+        wanderer.wait -= seconds;
+        if (wanderer.wait <= 0) wanderer.goal = this.somewhere(wanderer.room);
+        continue;
+      }
+      const dx = wanderer.goal.x - figure.position.x;
+      const dz = wanderer.goal.z - figure.position.z;
+      const left = Math.hypot(dx, dz);
+      const reach = wanderer.speed * seconds;
+      if (left <= reach + 0.02) {
+        wanderer.wait = 3 + Math.random() * 7;
+        figure.position.y = 0;
+        continue;
+      }
+      const next = stepFrom({ x: figure.position.x, z: figure.position.z }, (dx / left) * reach, (dz / left) * reach, this.blocked);
+      // Nowhere to go from here: stand a moment and choose somewhere else.
+      if (!next) {
+        wanderer.wait = 0.5 + Math.random() * 2;
+        continue;
+      }
+      figure.position.set(next.x, Math.abs(Math.sin(this.clock * 9 + figure.id)) * 0.03, next.z);
+    }
+  }
+
   /** The two things in the hall that are not exhibits: the board of every campaign, and the desk where one is opened. */
   private buildStations() {
     const wood = new THREE.MeshStandardMaterial({ color: "#6b4a32", roughness: 0.7 });
@@ -971,7 +1062,7 @@ export class MuseumScene {
       return;
     }
     const gap = Math.max(0, (time - this.last) / 1000);
-    this.last = time;
+    const strolling = this.wanderers.size > 0 && !this.calm;
     const moving =
       this.held.size > 0 ||
       this.path.length > 0 ||
@@ -982,14 +1073,18 @@ export class MuseumScene {
     // Nothing moved and nothing changed: the picture on screen is still the right one.
     if (!moving && !this.dirty) {
       this.lively = false;
-      return;
+      // Strollers alone are drawn at an easy pace, and nothing at all is drawn without them.
+      if (!strolling) this.last = time;
+      if (!strolling || gap < 1 / STROLL_FRAMES) return;
     }
+    this.last = time;
     // The first frame after a rest says nothing about how fast this machine is.
     if (this.lively) this.unburden(gap);
     this.lively = moving;
     this.dirty = false;
     const seconds = Math.min(0.06, gap);
     this.clock += seconds;
+    if (strolling) this.stroll(seconds);
 
     const walked = this.walk(seconds);
     const position = this.visitor.position;
@@ -1062,6 +1157,13 @@ export class MuseumScene {
       const at = this.project(station.x, 2.3, station.z);
       tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     });
+    for (const wanderer of this.wanderers.values()) {
+      const shown = readable && !this.selected;
+      wanderer.tag.classList.toggle("hidden", !shown);
+      if (!shown) continue;
+      const at = this.project(wanderer.figure.position.x, 1.0, wanderer.figure.position.z);
+      wanderer.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
+    }
     this.astir = false;
     for (const other of this.others.values()) {
       const figure = other.figure.position;

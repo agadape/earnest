@@ -119,6 +119,15 @@ Rooms follow the campaign's own state and nothing else:
   on a transaction. Without the two variables nothing changes: reactions are read from the
   chain as before. The route was tested against a stand-in for the database, not against
   Supabase itself.
+- **Past visitors stroll the rooms.** With the database set up and `supabase/visitors.sql`
+  run, a wallet is written down when a browser that has it connected opens the museum, and
+  the fourteen seen most recently walk the rooms as figures with a faint short address. They
+  are there so the building is not empty, and the page says what they are: wallets that
+  visited before, not people here now. Nobody signs to be written down, so an address in
+  that table is whatever a browser sent. They also end the rest the floor got when nothing
+  moved: with strollers it is drawn up to 24 times a second, and not at all for someone who
+  asked their system for less motion. Their walking was not watched, for the same reason
+  the visitor's was not.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and
