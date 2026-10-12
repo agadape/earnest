@@ -48,6 +48,23 @@ const WALK = 5.2;
 const STRIDE = 11;
 const NEAR = 2.9;
 const START = { x: -6.4, z: 0 };
+/**
+ * Everything about how the floor is lit that is worth tuning by eye, in one place.
+ */
+export const LOOK = {
+  exposure: 1.1,
+  sky: "#cfe3ff",
+  ground: "#8a7a5a",
+  skyLight: 0.85,
+  sun: "#fff1d6",
+  sunLight: 3.4,
+  /** How much the metal and glass reflect of the room made for them. */
+  reflections: 0.16,
+  shadowMap: 2048,
+  /** How bright the pool of light under an exhibit is, and under one still asking for backers. */
+  pool: 0.2,
+  poolAsking: 0.55,
+};
 // The most figures a crowd is drawn with, however many reactions there are.
 const CROWD_MOST = 10;
 const CROWD_SHIRTS = ["#e4572e", "#17bebb", "#ffc914", "#76b041", "#5b5f97", "#ff8cc6", "#2e86ab", "#f4f1de"];
@@ -167,7 +184,7 @@ export class MuseumScene {
     // most of what makes this heavy, and at this distance a little over one is enough.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Shadows are drawn once, when the exhibits are hung: nothing that casts one moves.
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = true;
@@ -187,7 +204,7 @@ export class MuseumScene {
 
     // Daylight: a bright sky, and a sun in the north-west so shadows fall towards the viewer.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = LOOK.exposure;
     this.scene.background = new THREE.Color(SKY);
     // A little haze over what is far away, so the wood behind the museum falls back.
     this.scene.fog = new THREE.Fog("#c4e0b4", 158, 270);
@@ -195,18 +212,42 @@ export class MuseumScene {
     // once and costs nothing a frame.
     const reflections = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = reflections.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.16;
+    this.scene.environmentIntensity = LOOK.reflections;
     reflections.dispose();
-    this.scene.add(new THREE.HemisphereLight("#eaf6ff", "#8aa26f", 1.12));
-    const sun = new THREE.DirectionalLight("#fff1d6", 3.1);
-    sun.position.set(-4, 26, -10);
+    this.scene.add(new THREE.HemisphereLight(LOOK.sky, LOOK.ground, LOOK.skyLight));
+    // A warm sun, low enough in the north-west for the long shadows of late afternoon.
+    const sun = new THREE.DirectionalLight(LOOK.sun, LOOK.sunLight);
+    sun.position.set(17 - 26, 22, 1 - 15);
     sun.target.position.set(17, 0, 1);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.bias = -0.0004;
+    sun.shadow.mapSize.set(LOOK.shadowMap, LOOK.shadowMap);
+    sun.shadow.bias = -0.0003;
+    sun.shadow.normalBias = 0.03;
     sun.shadow.radius = 3;
-    Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 34, bottom: -34, near: 1, far: 100 });
     this.scene.add(sun, sun.target);
+    // The shadow's own camera is fitted to the building and no more, so that the whole of its
+    // picture is spent on what casts and catches shadows.
+    sun.updateMatrixWorld();
+    sun.target.updateMatrixWorld();
+    sun.shadow.camera.position.copy(sun.position);
+    sun.shadow.camera.lookAt(sun.target.position);
+    sun.shadow.camera.updateMatrixWorld();
+    const seen = sun.shadow.camera.matrixWorldInverse.copy(sun.shadow.camera.matrixWorld).invert();
+    const fit = new THREE.Box3();
+    for (const x of [BOUNDS.minX - 5, BOUNDS.maxX + 2]) {
+      for (const z of [BOUNDS.minZ - 2, BOUNDS.maxZ + 2]) {
+        for (const y of [-0.6, 4.5]) fit.expandByPoint(new THREE.Vector3(x, y, z).applyMatrix4(seen));
+      }
+    }
+    Object.assign(sun.shadow.camera, {
+      left: fit.min.x,
+      right: fit.max.x,
+      bottom: fit.min.y,
+      top: fit.max.y,
+      near: Math.max(0.5, -fit.max.z - 2),
+      far: -fit.min.z + 2,
+    });
+    sun.shadow.camera.updateProjectionMatrix();
 
     buildWorld(this.scene);
     this.buildStations();
@@ -337,7 +378,8 @@ export class MuseumScene {
           blending: THREE.AdditiveBlending,
         }),
       );
-    const bright = lit(0.55);
+    const bright = lit(LOOK.poolAsking);
+    const soft = lit(LOOK.pool);
 
     const plinthTall = this.keep(new THREE.BoxGeometry(1.3, 0.72, 1.3));
     const plinthLow = this.keep(new THREE.BoxGeometry(1.3, 0.34, 1.3));
@@ -397,9 +439,9 @@ export class MuseumScene {
       group.position.set(exhibit.x, 0, exhibit.z);
       this.places.set(exhibit.id, group.position.clone());
 
-      // A spotlight, and only on what is still asking for backers: light on everything is
-      // light on nothing.
-      if (status === "funding") place("pool", light, bright, exhibit.x, 0.07, exhibit.z, false);
+      // A pool of light under every exhibit, as a museum has, and a brighter one under what
+      // is still asking for backers. They are pictures on the floor, not lamps.
+      place(status === "funding" ? "pool" : "pool-soft", light, status === "funding" ? bright : soft, exhibit.x, 0.07, exhibit.z, false);
 
       if (exhibit.plot !== undefined) {
         const style = (exhibit.style ?? 0) % roomFloors.length;
