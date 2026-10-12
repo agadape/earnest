@@ -1,0 +1,142 @@
+/**
+ * Reactions and rooms are read from notes anybody can write. These check that only the notes
+ * that should count do: a room is its creator's to place, and a plot goes to whoever signed
+ * for it first.
+ *
+ *   npm test
+ */
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { Keypair, PublicKey } from "@solana/web3.js";
+
+import type { Campaign } from "@/lib/tanda-jadi";
+
+import { judgeClaims, type PlotClaim, sortNotes } from "./ledger";
+import { arrange, canStand, PLOTS, ROOMS, route } from "./museum/plan";
+
+const A = "CampaignA";
+const B = "CampaignB";
+const creators: Record<string, string> = { [A]: "alice", [B]: "bob" };
+const claim = (signature: string, campaign: string, plot: number, style = 0): PlotClaim => ({
+  signature,
+  campaign,
+  plot,
+  style,
+});
+const judge = (claims: PlotClaim[], signed: Record<string, string[]>) =>
+  judgeClaims(
+    claims,
+    (campaign) => creators[campaign],
+    (signature) => signed[signature],
+    24,
+  );
+
+test("notes are sorted into reactions and claims, and anything else is ignored", () => {
+  const { reactions, claims } = sortNotes([
+    { signature: "1", text: `earnest:1:react:${A}:want` },
+    { signature: "2", text: `earnest:1:react:${A}:want` },
+    { signature: "3", text: `earnest:1:react:${A}:clever` },
+    { signature: "4", text: `earnest:1:react:${A}:hate` },
+    { signature: "5", text: "hello" },
+    { signature: "6", text: `someone-else:1:react:${A}:want` },
+    { signature: "7", text: `earnest:1:plot:${B}:3:2` },
+    { signature: "8", text: `earnest:1:plot:${B}:x:2` },
+  ]);
+  assert.deepEqual(reactions.get(A), { want: 2, clever: 1, watching: 0 });
+  assert.equal(reactions.size, 1);
+  assert.deepEqual(claims, [{ signature: "7", campaign: B, plot: 3, style: 2 }]);
+});
+
+test("only a campaign's creator can give it a room", () => {
+  const held = judge([claim("1", A, 4), claim("2", B, 5)], { "1": ["mallory"], "2": ["bob"] });
+  assert.equal(held.has(A), false);
+  assert.deepEqual(held.get(B), { plot: 5, style: 0 });
+});
+
+test("a plot goes to whoever signed for it first", () => {
+  const held = judge([claim("1", A, 4), claim("2", B, 4)], { "1": ["alice"], "2": ["bob"] });
+  assert.deepEqual(held.get(A), { plot: 4, style: 0 });
+  assert.equal(held.has(B), false);
+});
+
+test("moving a room frees the plot it stood on, and so does giving it up", () => {
+  const signed = { "1": ["alice"], "2": ["alice"], "3": ["bob"], "4": ["bob"], "5": ["alice"] };
+  const moved = judge([claim("1", A, 4), claim("2", A, 9, 3), claim("3", B, 4)], signed);
+  assert.deepEqual(moved.get(A), { plot: 9, style: 3 });
+  assert.deepEqual(moved.get(B), { plot: 4, style: 0 });
+
+  const left = judge([claim("1", A, 4), claim("4", B, 7), claim("5", A, -1)], signed);
+  assert.equal(left.has(A), false);
+  assert.equal(left.size, 1);
+});
+
+test("a claim that has not been looked up, or names a plot that does not exist, counts for nothing", () => {
+  assert.equal(judge([claim("1", A, 4)], {}).size, 0);
+  assert.equal(judge([claim("1", A, 24)], { "1": ["alice"] }).size, 0);
+});
+
+function campaign(id: number): Campaign {
+  return {
+    address: Keypair.generate().publicKey,
+    creator: PublicKey.default,
+    mint: PublicKey.default,
+    id: BigInt(id),
+    title: `Campaign ${id}`,
+    uri: "",
+    price: 10_000_000n,
+    targetBackers: 5,
+    earlySlots: 2,
+    bonusPerEarly: 2_500_000n,
+    deadline: 2_000_000,
+    buildSecs: 86_400,
+    upfrontBps: 2_000,
+    feeBps: 300,
+    status: "funding",
+    backers: 2,
+    brakes: 0,
+    fundedAt: 0,
+    brakedAt: 0,
+    refundPerBacker: 0n,
+  } as Campaign;
+}
+
+test("a campaign with a room stands on its plot and leaves the hall's floor to others", () => {
+  const hall = ROOMS[0];
+  const many = Array.from({ length: hall.slots.length + 1 }, (_, index) => campaign(index + 1));
+  // The oldest has no floor in a full hall.
+  const oldest = many[0].address.toBase58();
+  const before = arrange(many, 1_000_000);
+  assert.equal(before.exhibits.some((exhibit) => exhibit.id === oldest), false);
+
+  const after = arrange(
+    many,
+    1_000_000,
+    new Map([[oldest, { plot: 7, style: 2 }]]),
+    new Map([[oldest, 3]]),
+  );
+  const built = after.exhibits.find((exhibit) => exhibit.id === oldest);
+  assert.ok(built);
+  assert.equal(built.room, "annex");
+  assert.equal(built.code, "E-08");
+  assert.deepEqual({ x: built.x, z: built.z }, PLOTS[7]);
+  assert.equal(built.reactions, 3);
+  assert.equal(after.counts.annex, 1);
+  assert.equal(after.counts.unmade, hall.slots.length);
+  assert.equal(after.exhibits.length, many.length);
+});
+
+test("the annex is reached through the workshop, on floor all the way", () => {
+  const plot = PLOTS[13];
+  const to = { x: plot.x + 1.25, z: plot.z + 1.75 };
+  const fromHall = route({ x: -6, z: 0 }, to);
+  assert.deepEqual(fromHall.slice(0, 2), [
+    [6.6, 0],
+    [11.4, 0],
+  ]);
+  for (const [x, z] of fromHall) assert.ok(canStand(x, z, []), `${x},${z} is not floor`);
+
+  // From the workshop nobody goes back to the hall first.
+  const fromWorkshop = route({ x: 15.5, z: 0 }, to);
+  assert.deepEqual(fromWorkshop[0], [19.6, 0]);
+});

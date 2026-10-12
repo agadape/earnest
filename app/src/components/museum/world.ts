@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-import { CORRIDORS, ENTRANCE, type Room, type RoomId, ROOMS } from "@/lib/museum/plan";
+import { CORRIDORS, ENTRANCE, PLOT_SIZE, PLOTS, type Room, type RoomId, ROOMS } from "@/lib/museum/plan";
 
 const GRASS = "#8cc070";
 const PAVING = "#e6dcc6";
@@ -28,7 +28,7 @@ const LIME = "#d8f59a";
 export const SKY = GRASS;
 export const FAR_WALL = 2.4;
 /** The wood round the museum: a square of trees this far each way from its middle. */
-export const FOREST = { x: 4, z: 1, half: 78 };
+export const FOREST = { x: 14, z: 1, half: 96 };
 const NEAR_WALL = 0.95;
 const THICK = 0.5;
 
@@ -202,7 +202,7 @@ export function buildWorld(scene: THREE.Scene) {
   scene.add(grass);
 
   // The square the building stands on, and the path up to its door.
-  const square = { minX: -17, maxX: 24.5, minZ: -21, maxZ: 23.5 };
+  const square = { minX: -17, maxX: 48.5, minZ: -21, maxZ: 23.5 };
   const squareWidth = square.maxX - square.minX;
   const squareDepth = square.maxZ - square.minZ;
   slab(squareWidth, 0.12, squareDepth, (square.minX + square.maxX) / 2, -0.46, (square.minZ + square.maxZ) / 2, cobbles(squareWidth, squareDepth), false);
@@ -243,7 +243,7 @@ export function buildWorld(scene: THREE.Scene) {
     }
   }
   const near = trees.length;
-  for (let tries = 0; tries < 6000 && trees.length < near + 700; tries++) {
+  for (let tries = 0; tries < 9000 && trees.length < near + 950; tries++) {
     const x = FOREST.x + (random() * 2 - 1) * FOREST.half;
     const z = FOREST.z + (random() * 2 - 1) * FOREST.half;
     const onSquare = x > square.minX - 2 && x < square.maxX + 2 && z > square.minZ - 2 && z < square.maxZ + 2;
@@ -389,6 +389,7 @@ export function buildWorld(scene: THREE.Scene) {
     workshop: tiles(11, 10, "#e3e9ec", "#a9bcc8"),
     realized: tiles(11, 10, "#f3ecdc", "#e3d8c0", 1.1),
     almost: planks(16, 12, "#96765a"),
+    annex: tiles(22, 20, "#ece6d6", "#d3ccb6", 1.7),
   };
 
   for (const room of ROOMS) {
@@ -446,9 +447,25 @@ export function buildWorld(scene: THREE.Scene) {
     board.rotation.y = Math.PI / 4;
     scene.add(board);
 
-    // Hedges along the outside of the low walls.
-    slab(room.width - 1.4, 0.55, 0.5, room.x, -0.12, room.z + room.depth / 2 + 0.95, hedge);
-    slab(0.5, 0.55, room.depth - 1.4, room.x + room.width / 2 + 0.95, -0.12, room.z, hedge);
+    // Hedges along the outside of the low walls, except where a door leads out through one.
+    const doorSouth = CORRIDORS.some(
+      (corridor) => corridor.along === "z" && Math.abs(corridor.z - corridor.depth / 2 - (room.z + room.depth / 2)) < 0.1 && Math.abs(corridor.x - room.x) < room.width / 2,
+    );
+    const doorEast = CORRIDORS.some(
+      (corridor) => corridor.along === "x" && Math.abs(corridor.x - corridor.width / 2 - (room.x + room.width / 2)) < 0.1 && Math.abs(corridor.z - room.z) < room.depth / 2,
+    );
+    if (!doorSouth) slab(room.width - 1.4, 0.55, 0.5, room.x, -0.12, room.z + room.depth / 2 + 0.95, hedge);
+    if (!doorEast) slab(0.5, 0.55, room.depth - 1.4, room.x + room.width / 2 + 0.95, -0.12, room.z, hedge);
+  }
+
+  // The plots of the annex, marked out on its floor for whoever builds there.
+  const chalk = matte("#fbf6e6", 1);
+  for (const plot of PLOTS) {
+    const half = PLOT_SIZE / 2;
+    laid(PLOT_SIZE, 0.08, plot.x, plot.z - half, chalk, 0.012);
+    laid(PLOT_SIZE, 0.08, plot.x, plot.z + half, chalk, 0.012);
+    laid(0.08, PLOT_SIZE, plot.x - half, plot.z, chalk, 0.012);
+    laid(0.08, PLOT_SIZE, plot.x + half, plot.z, chalk, 0.012);
   }
 
   for (const corridor of CORRIDORS) {

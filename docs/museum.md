@@ -95,6 +95,19 @@ Rooms follow the campaign's own state and nothing else:
   wallet address or the word Guest. Nobody signs anything to be shown, so a figure's name
   proves nothing about who it is, and positions are a second old. It was tested with two and
   three callers at once, a guest and a wallet, on the live site; it was not load tested.
+- **Rooms and reactions are notes on chain, not rows in a database.** A reaction, and a
+  creator's claim on an annex plot, is a transaction the writer signs: a line of text through
+  the memo program and a transfer of nothing to one fixed address, so the notes can be found
+  again by reading that address's history (`app/src/lib/ledger.ts`). The program was not
+  changed and knows nothing of them. A claim counts when the campaign's own creator signed it
+  and the plot was free at that moment; the first to sign has the plot, a later claim moves
+  the room, and the app looks up who signed each claim before believing it. Reactions are not
+  looked up: one wallet can react as often as it pays the fee for, so a count is of signed
+  reactions, not of people, and the figures drawn round an exhibit (one per reaction, ten at
+  most) stand for nobody. The annex has 24 plots; a museum with more creators than that needs
+  a second annex nobody has built. Only the newest three thousand notes are read. Checked on
+  devnet: a claim by a wallet that is not the creator and a claim on a taken plot were both
+  ignored, and a room was built from the app with the demo wallet.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and

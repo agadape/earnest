@@ -183,6 +183,17 @@ line under a campaign's title and in full as a file inside the museum (`/creator
 fill counts for the creator here, not against them: they asked before building and paid what
 they promised.
 
+### Rooms and reactions
+
+Whoever opened a campaign can build its exhibit a room of its own in the museum's annex: pick
+a free plot and a floor, sign once. Anyone with a wallet can react to a campaign, and reactions
+gather a crowd of figures round its exhibit. Neither touches the program or a database. Each is
+a signed transaction carrying a memo, found again through one fixed address; see
+`app/src/lib/ledger.ts` and `docs/museum.md` for the rules and their limits. A count of
+reactions is a count of signed transactions, not of people.
+
+    RPC_URL=https://api.devnet.solana.com npx tsx scripts/notes.ts     # read them, from app/
+
 ## What this does not solve
 
 Stated plainly, because a reader will find them anyway.

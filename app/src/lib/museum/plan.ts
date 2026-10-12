@@ -6,7 +6,7 @@
  */
 import { type Campaign, type Status, statusAt } from "@/lib/tanda-jadi";
 
-export type RoomId = "unmade" | "workshop" | "realized" | "almost";
+export type RoomId = "unmade" | "workshop" | "realized" | "almost" | "annex";
 
 export interface Room {
   id: RoomId;
@@ -85,7 +85,30 @@ export const ROOMS: Room[] = [
     depth: 12,
     slots: grid({ x: 0, z: 14 }, [-5.25, -1.75, 1.75, 5.25], [-3.4, 0, 3.4]),
   },
+  {
+    id: "annex",
+    code: "E",
+    name: "The Annex",
+    blurb:
+      "Rooms built by the creators themselves. Whoever opened a campaign can claim a free plot here and give its exhibit a room of its own, whatever state it is in.",
+    empty: "No creator has built a room here yet. Every plot is free.",
+    x: 35,
+    z: 0,
+    width: 22,
+    depth: 20,
+    // Plots, numbered along the rows from the far corner. An aisle runs down the middle.
+    slots: [-7.3, -3.2, 3.2, 7.3].flatMap((dz) =>
+      [-8.5, -5.1, -1.7, 1.7, 5.1, 8.5].map((dx) => ({ x: 35 + dx, z: dz })),
+    ),
+  },
 ];
+
+/** The floors a creator can choose between for their room, by the number of the style. */
+export const ROOM_FLOORS = ["#3d6f9e", "#b5443b", "#2f7d5b", "#d0a52e", "#5b4a8a"];
+/** The plots of the annex. A campaign stands on one only because its creator claimed it. */
+export const PLOTS = ROOMS[ROOMS.length - 1].slots;
+/** How much floor a creator's room takes: a square this long each way. */
+export const PLOT_SIZE = 3;
 
 /** The way in: a porch on the west side of the main hall. */
 export const ENTRANCE = { x: -9.5, z: 0, width: 3, depth: 3.2, along: "x" as const };
@@ -96,6 +119,8 @@ export const CORRIDORS = [
   { x: 9, z: 0, width: 2, depth: 3.2, along: "x" as const },
   { x: 0, z: -7, width: 3.2, depth: 2, along: "z" as const },
   { x: 0, z: 7, width: 3.2, depth: 2, along: "z" as const },
+  // From the workshop out to the annex.
+  { x: 22.5, z: 0, width: 3, depth: 3.2, along: "x" as const },
 ];
 
 const ROOM_OF: Record<Status, RoomId> = {
@@ -141,6 +166,11 @@ export interface Exhibit {
   x: number;
   z: number;
   kind: Kind;
+  /** The annex plot its creator built on, and the floor they chose. Missing in the four rooms. */
+  plot?: number;
+  style?: number;
+  /** How many reactions it has been given. */
+  reactions: number;
 }
 
 export interface Museum {
@@ -153,32 +183,72 @@ export interface Museum {
  * Hangs the campaigns. Within a room the newest comes first; a room shows as many as it has
  * places for and the rest stay reachable through the catalog.
  */
-export function arrange(campaigns: Campaign[], now: number): Museum {
-  const counts: Record<RoomId, number> = { unmade: 0, workshop: 0, realized: 0, almost: 0 };
-  const taken: Record<RoomId, number> = { unmade: 0, workshop: 0, realized: 0, almost: 0 };
+export function arrange(
+  campaigns: Campaign[],
+  now: number,
+  /** By campaign address: the plot each creator built on, and the reactions each was given. */
+  plots: ReadonlyMap<string, { plot: number; style: number }> = new Map(),
+  reactions: ReadonlyMap<string, number> = new Map(),
+): Museum {
+  const counts: Record<RoomId, number> = { unmade: 0, workshop: 0, realized: 0, almost: 0, annex: 0 };
+  const taken: Record<RoomId, number> = { unmade: 0, workshop: 0, realized: 0, almost: 0, annex: 0 };
   const exhibits: Exhibit[] = [];
   // Ids are the creation time in milliseconds, so the largest is the newest.
   const newestFirst = [...campaigns].sort((a, b) => (a.id === b.id ? 0 : a.id > b.id ? -1 : 1));
 
   for (const campaign of newestFirst) {
     const status = statusAt(campaign, now);
-    const room = ROOMS.find(({ id }) => id === ROOM_OF[status]) as Room;
+    const id = campaign.address.toBase58();
+    const shared = { id, campaign, status, kind: kindOf(campaign), reactions: reactions.get(id) ?? 0 };
+    // A room its creator built comes before the room its state would put it in.
+    const built = plots.get(id);
+    const plot = built ? PLOTS[built.plot] : undefined;
+    if (built && plot) {
+      counts.annex += 1;
+      exhibits.push({
+        ...shared,
+        code: `E-${String(built.plot + 1).padStart(2, "0")}`,
+        room: "annex",
+        x: plot.x,
+        z: plot.z,
+        plot: built.plot,
+        style: built.style,
+      });
+      continue;
+    }
+    const room = ROOMS.find((candidate) => candidate.id === ROOM_OF[status]) as Room;
     counts[room.id] += 1;
     const slot = room.slots[taken[room.id]];
     if (!slot) continue;
     taken[room.id] += 1;
     exhibits.push({
-      id: campaign.address.toBase58(),
+      ...shared,
       code: `${room.code}-${String(taken[room.id]).padStart(2, "0")}`,
-      campaign,
-      status,
       room: room.id,
       x: slot.x,
       z: slot.z,
-      kind: kindOf(campaign),
     });
   }
   return { exhibits, counts };
+}
+
+/**
+ * A campaign the rooms have no floor for, described the way an exhibit is, so it can still
+ * be opened and looked at. It stands nowhere.
+ */
+export function stored(campaign: Campaign, now: number, reactions: number): Exhibit {
+  const status = statusAt(campaign, now);
+  return {
+    id: campaign.address.toBase58(),
+    code: "in storage",
+    campaign,
+    status,
+    room: ROOM_OF[status],
+    x: 0,
+    z: 0,
+    kind: kindOf(campaign),
+    reactions,
+  };
 }
 
 /** How many seat markers stand in front of an exhibit, and how many of them are lit. */
@@ -247,12 +317,27 @@ export function roomAt(x: number, z: number): RoomId {
   return best.id;
 }
 
-// Each side room is reached through one door in the main hall: a point just inside the room
-// and a point just inside the hall.
-const DOORS: Partial<Record<RoomId, { inside: [number, number]; hall: [number, number] }>> = {
-  workshop: { inside: [11.4, 0], hall: [6.6, 0] },
-  realized: { inside: [0, -9.4], hall: [0, -4.6] },
-  almost: { inside: [0, 9.4], hall: [0, 4.6] },
+// The way from each room back to the main hall, door by door: a point just inside each
+// doorway passed. The annex is reached through the workshop.
+const WAY_TO_HALL: Partial<Record<RoomId, [number, number][]>> = {
+  workshop: [
+    [11.4, 0],
+    [6.6, 0],
+  ],
+  realized: [
+    [0, -9.4],
+    [0, -4.6],
+  ],
+  almost: [
+    [0, 9.4],
+    [0, 4.6],
+  ],
+  annex: [
+    [25.4, 0],
+    [19.6, 0],
+    [11.4, 0],
+    [6.6, 0],
+  ],
 };
 
 /** The points to walk through, in order, to get from one place to another by the doors. */
@@ -261,10 +346,17 @@ export function route(from: { x: number; z: number }, to: { x: number; z: number
   const end = roomAt(to.x, to.z);
   const points: [number, number][] = [];
   if (start !== end) {
-    const out = DOORS[start];
-    if (out) points.push(out.inside, out.hall);
-    const into = DOORS[end];
-    if (into) points.push(into.hall, into.inside);
+    const out = [...(WAY_TO_HALL[start] ?? [])];
+    const back = [...(WAY_TO_HALL[end] ?? [])];
+    // Doors both ways share are doors nobody needs to go through.
+    while (out.length > 0 && back.length > 0) {
+      const a = out[out.length - 1];
+      const b = back[back.length - 1];
+      if (a[0] !== b[0] || a[1] !== b[1]) break;
+      out.pop();
+      back.pop();
+    }
+    points.push(...out, ...back.reverse());
   }
   points.push([to.x, to.z]);
   return points;

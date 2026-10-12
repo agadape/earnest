@@ -67,7 +67,7 @@ test("each campaign hangs in the room its state calls for", () => {
   assert.equal(roomOf(4), "realized");
   assert.equal(roomOf(5), "almost");
   assert.equal(roomOf(7), "realized");
-  assert.deepEqual(counts, { unmade: 1, workshop: 1, realized: 2, almost: 3 });
+  assert.deepEqual(counts, { unmade: 1, workshop: 1, realized: 2, almost: 3, annex: 0 });
 
   // A campaign its backers stopped ended unmade, but it keeps its own name for what happened.
   const stopped = exhibits.find((exhibit) => exhibit.campaign.id === 6n);

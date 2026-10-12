@@ -7,12 +7,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CampaignList, NetworkNotice, SetupNotice } from "@/components/campaign-list";
 import { CampaignView } from "@/components/campaign-view";
 import { Chamber } from "@/components/museum/chamber";
-import { Board, CreatorRecord, DesignMode } from "@/components/museum/hud";
+import { Board, CreatorRecord, DesignMode, PlotPicker } from "@/components/museum/hud";
 import type { Direction, MuseumScene } from "@/components/museum/scene";
+import { useNotes } from "@/components/museum/use-notes";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
 import { formatDuration, shortAddress } from "@/lib/format";
-import { arrange, type Exhibit, type RoomId, ROOMS, STATIONS, STATUS_WORDS } from "@/lib/museum/plan";
+import { arrange, type Exhibit, type RoomId, ROOMS, STATIONS, STATUS_WORDS, stored } from "@/lib/museum/plan";
 import { buildEnd, fetchCampaigns } from "@/lib/tanda-jadi";
 
 const WIDE = "(min-width: 1024px)";
@@ -65,15 +66,31 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   }, [program]);
   const { data: campaigns, error } = usePolled(MINT ? load : null);
 
+  // What is written on chain beside the campaigns: reactions, and the rooms creators built.
+  const { reactions, plots, reload: reloadNotes } = useNotes(campaigns);
+  const reacted = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const [id, counts] of reactions) totals.set(id, counts.want + counts.clever + counts.watching);
+    return totals;
+  }, [reactions]);
+  /** Reads the notes again now, and once more when the network has surely caught up. */
+  const noted = useCallback(() => {
+    reloadNotes();
+    setTimeout(reloadNotes, 3500);
+  }, [reloadNotes]);
+
   const museum = useMemo(
-    () => (campaigns && now !== null ? arrange(campaigns, now) : null),
-    [campaigns, now],
+    () => (campaigns && now !== null ? arrange(campaigns, now, plots, reacted) : null),
+    [campaigns, now, plots, reacted],
   );
   // The clock ticks every second and the chain is asked every two; the building is only
   // rebuilt when something a visitor could see has changed.
   const signature = museum
     ? museum.exhibits
-        .map(({ id, status, x, z, campaign }) => `${id}:${status}:${x}:${z}:${campaign.backers}`)
+        .map(
+          ({ id, status, x, z, campaign, style, reactions: given }) =>
+            `${id}:${status}:${x}:${z}:${campaign.backers}:${style ?? ""}:${Math.min(given, 10)}`,
+        )
         .join("|")
     : null;
   // The same list object for as long as the signature holds.
@@ -94,6 +111,9 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const [panel, setPanel] = useState<Panel | null>(null);
   const [creator, setCreator] = useState<string | null>(null);
   const [untouched, setUntouched] = useState(true);
+  // Build mode: the campaign whose creator is choosing a plot, and the plot picked so far.
+  const [placing, setPlacing] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<number | null>(null);
   const [near, setNear] = useState<string | null>(null);
   const [here, setHere] = useState<number | null>(null);
   // The plaque at the door: what this place is, for someone who has never heard of it.
@@ -115,6 +135,40 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       );
     } catch {}
   }, []);
+
+  // What a click on the floor means depends on whether a plot is being chosen. The scene
+  // outlives that, so it is handed a way to ask instead of the answer.
+  const picked = useRef<(id: string | null) => void>(select);
+  useEffect(() => {
+    picked.current = (id) => {
+      if (id?.startsWith("@plot:")) setChosen(Number(id.slice(6)));
+      else if (!placing) select(id);
+    };
+  }, [placing, select]);
+
+  const owners = useMemo(() => {
+    const byPlot = new Map<number, string>();
+    for (const [id, built] of plots) byPlot.set(built.plot, id);
+    return byPlot;
+  }, [plots]);
+  const free = ROOMS[ROOMS.length - 1].slots.map((_, plot) => plot).filter((plot) => !owners.has(plot));
+  const freeKey = free.join(",");
+  useEffect(() => {
+    if (!sceneId) return;
+    scene.current?.setPlacing(placing ? freeKey.split(",").filter(Boolean).map(Number) : null, chosen);
+  }, [sceneId, placing, freeKey, chosen]);
+
+  /** Starts build mode for a campaign: the chamber closes and the view goes to the annex. */
+  const place = useCallback(
+    (id: string) => {
+      select(null);
+      setAtDoor(false);
+      setPlacing(id);
+      setChosen(null);
+      scene.current?.focusRoom("annex");
+    },
+    [select],
+  );
 
   // A link can ask for an exhibit, a creator's file, the board or the desk. Links in the
   // header do, and so do the addresses that used to be pages of their own.
@@ -156,7 +210,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
           {
             // The scene shows its own label beside what is pointed at.
             onHover: () => undefined,
-            onSelect: (id) => select(id),
+            onSelect: (id) => picked.current(id),
             onRoom: setRoom,
             onNear: setNear,
           },
@@ -277,7 +331,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     };
     const onDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (selected || panel) select(null);
+        if (placing) setPlacing(null);
+        else if (selected || panel) select(null);
         else setAtDoor(false);
         return;
       }
@@ -308,7 +363,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [selected, panel, select, near, covered]);
+  }, [selected, panel, select, near, covered, placing]);
 
   if (!MINT) {
     return (
@@ -348,7 +403,13 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const current = ROOMS.find((candidate) => candidate.id === room) ?? ROOMS[0];
   const inRoom = museum?.exhibits.filter((exhibit) => exhibit.room === room) ?? [];
   const unhung = museum ? museum.counts[room] - inRoom.length : 0;
-  const open = selected ? museum?.exhibits.find((exhibit) => exhibit.id === selected) : undefined;
+  const shown = selected ? museum?.exhibits.find((exhibit) => exhibit.id === selected) : undefined;
+  const kept = selected && !shown ? campaigns?.find((campaign) => campaign.address.toBase58() === selected) : undefined;
+  // An exhibit the rooms have no floor for can still be opened, and given a room.
+  const open = shown ?? (kept && now !== null ? stored(kept, now, reacted.get(selected ?? "") ?? 0) : undefined);
+  const viewer = publicKey?.toBase58();
+  const mine = viewer ? (campaigns ?? []).filter((campaign) => campaign.creator.toBase58() === viewer) : [];
+  const beingPlaced = placing ? campaigns?.find((campaign) => campaign.address.toBase58() === placing) : undefined;
   const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
   const station = near ? STATIONS.find((entry) => entry.id === near) : undefined;
   const hudButton =
@@ -383,6 +444,30 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
 
           {museum && inRoom.length === 0 && (
             <p className="mt-4 border-l-2 border-machine pl-3 text-sm text-paper/75">{current.empty}</p>
+          )}
+          {room === "annex" && mine.length > 0 && !placing && (
+            <div className="mt-4 max-w-xs">
+              <p className="font-mono text-xs uppercase tracking-widest text-paper/60">Build a room for</p>
+              <ul className="thin-scroll mt-2 max-h-[16vh] space-y-1 overflow-y-auto pr-2">
+                {mine.map((campaign) => {
+                  const id = campaign.address.toBase58();
+                  return (
+                    <li key={id}>
+                      <button
+                        type="button"
+                        onClick={() => place(id)}
+                        className="block w-full border border-lime/60 px-3 py-1.5 text-left text-sm hover:bg-lime hover:text-carbon focus-visible:outline-2 focus-visible:outline-lime"
+                      >
+                        {campaign.title || "Untitled campaign"}
+                        <span className="block font-mono text-[11px] opacity-70">
+                          {plots.has(id) ? "Move its room" : "No room yet"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
           {inRoom.length > 0 && (
             <details open className="group mt-4 max-w-xs">
@@ -464,7 +549,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
             <p className="mt-2 hidden max-w-md text-xs leading-5 text-paper/60 sm:block">
               <span className="font-mono text-lime">{here ?? 1} here now.</span> You walk as{" "}
               <span className="font-mono text-paper">{name}</span>; a figure with a name over it is
-              another visitor. Visiting pledges nothing.
+              another visitor. Figures gathered round an exhibit stand for its reactions, one
+              each up to ten; they are nobody.
             </p>
           </nav>
 
@@ -598,6 +684,10 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
           now={now}
           onBack={() => select(null)}
           onCreator={(who) => select(CREATOR + who)}
+          reactions={reactions.get(selected)}
+          onReacted={noted}
+          onPlace={open && viewer === open.campaign.creator.toBase58() ? () => place(selected) : undefined}
+          hasRoom={plots.has(selected)}
           onMap={() => {
             select(null);
             scene.current?.overview();
@@ -612,6 +702,21 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       )}
       {panel === "record" && creator && (
         <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
+      )}
+      {beingPlaced && !selected && !panel && (
+        <PlotPicker
+          key={placing}
+          campaign={beingPlaced}
+          owners={owners}
+          current={plots.get(placing ?? "")}
+          chosen={chosen}
+          onChoose={setChosen}
+          onDone={() => {
+            setPlacing(null);
+            noted();
+          }}
+          onCancel={() => setPlacing(null)}
+        />
       )}
     </div>
   );

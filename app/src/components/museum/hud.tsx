@@ -8,9 +8,11 @@ import { Frame } from "@/components/museum/chamber";
 import type { Inspector } from "@/components/museum/inspector";
 import { NewCampaignForm } from "@/components/new-campaign-form";
 import { formatDuration, shortAddress, usd } from "@/lib/format";
+import { claimPlotIx, type Plot } from "@/lib/ledger";
 import { describeRecord, recordOf } from "@/lib/record";
-import { type Kind, kindOf, STATUS_WORDS } from "@/lib/museum/plan";
+import { type Kind, kindOf, PLOTS, ROOM_FLOORS, STATUS_WORDS } from "@/lib/museum/plan";
 import { buildEnd, type Campaign, type Status, statusAt } from "@/lib/tanda-jadi";
+import { useSend } from "@/lib/transactions";
 
 /** A window over the museum floor: dimmed floor behind, a framed panel in front, Esc to leave. */
 function Overlay({
@@ -272,6 +274,123 @@ export function CreatorRecord({
         </div>
       )}
     </Overlay>
+  );
+}
+
+/**
+ * Build mode: a creator choosing where in the annex their campaign's room goes. The floor
+ * stays in view behind this, with the free plots lit; a plot can be picked there or on the
+ * small plan here. Nothing is built until the creator signs.
+ */
+export function PlotPicker({
+  campaign,
+  owners,
+  current,
+  chosen,
+  onChoose,
+  onDone,
+  onCancel,
+}: {
+  campaign: Campaign;
+  /** Which campaign stands on which plot now, by plot number. */
+  owners: ReadonlyMap<number, string>;
+  current: Plot | undefined;
+  chosen: number | null;
+  onChoose: (plot: number) => void;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const { send, busy } = useSend();
+  const [style, setStyle] = useState(current?.style ?? 0);
+  const id = campaign.address.toBase58();
+  const claim = async (plot: number) => {
+    const sent = await send("plot", {
+      pending: plot < 0 ? "Giving the room up" : "Signing for the plot",
+      done: plot < 0 ? "The plot is free again" : `Room built on plot E-${String(plot + 1).padStart(2, "0")}`,
+      build: async (payer) => [claimPlotIx(payer, campaign.address, plot, style)],
+    });
+    if (sent) onDone();
+  };
+
+  return (
+    <section aria-label="Build mode" className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center p-3 sm:p-5">
+      <Frame className="pointer-events-auto w-full max-w-4xl">
+        <div className="flex flex-col gap-4 p-4 text-paper sm:flex-row sm:items-start sm:gap-6 sm:p-5">
+          <div className="min-w-0 flex-1">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Build mode · the Annex</p>
+            <h2 className="mt-0.5 truncate font-mono text-lg font-semibold text-lime">
+              A room for {campaign.title || "your campaign"}
+            </h2>
+            <p className="mt-2 text-xs leading-5 text-paper/70">
+              Pick a free plot, on the floor or on the plan, and a colour for the floor. You sign
+              one transaction; it costs a network fee and moves no money. The first creator to
+              sign for a plot has it, and you can move later.
+            </p>
+            <div role="group" aria-label="Floor colour" className="mt-3 flex items-center gap-1.5">
+              {ROOM_FLOORS.map((color, index) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`Floor colour ${index + 1}`}
+                  aria-pressed={style === index}
+                  onClick={() => setStyle(index)}
+                  style={{ backgroundColor: color }}
+                  className={`h-7 w-9 border-2 ${style === index ? "border-lime" : "border-paper/20"}`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="shrink-0">
+            <div role="group" aria-label="Plots" className="grid grid-cols-6 gap-1">
+              {PLOTS.map((_, plot) => {
+                const owner = owners.get(plot);
+                const mine = owner === id;
+                const takenByOther = owner !== undefined && !mine;
+                return (
+                  <button
+                    key={plot}
+                    type="button"
+                    disabled={takenByOther || mine}
+                    aria-pressed={chosen === plot}
+                    aria-label={`Plot ${plot + 1}${takenByOther ? ", taken" : mine ? ", yours now" : ", free"}`}
+                    onClick={() => onChoose(plot)}
+                    className={`h-8 w-10 border font-mono text-xs ${
+                      chosen === plot
+                        ? "border-lime bg-lime text-carbon"
+                        : mine
+                          ? "border-lime text-lime"
+                          : takenByOther
+                            ? "border-paper/10 text-paper/25"
+                            : "border-paper/40 text-paper hover:border-lime"
+                    }`}
+                  >
+                    {plot + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={chosen === null || busy !== null}
+                onClick={() => chosen !== null && claim(chosen)}
+                className="h-9 bg-lime px-4 font-mono text-xs font-semibold uppercase tracking-wider text-carbon hover:bg-white disabled:opacity-40"
+              >
+                {chosen === null ? "Pick a plot" : `Sign and build on E-${String(chosen + 1).padStart(2, "0")}`}
+              </button>
+              {current && (
+                <button type="button" disabled={busy !== null} onClick={() => claim(-1)} className="hud-button">
+                  Give the room up
+                </button>
+              )}
+              <button type="button" onClick={onCancel} className="hud-button">
+                Cancel <span className="hidden font-mono text-[10px] opacity-60 sm:inline">esc</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Frame>
+    </section>
   );
 }
 

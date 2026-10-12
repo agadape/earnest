@@ -5,8 +5,10 @@ import { type ReactNode, useEffect, useRef } from "react";
 import { CampaignView } from "@/components/campaign-view";
 import type { Inspector } from "@/components/museum/inspector";
 import { formatDate, formatDuration, shortAddress, usd } from "@/lib/format";
+import { type ReactionCounts, reactIx, REACTIONS } from "@/lib/ledger";
 import { type Exhibit, ROOMS, STATUS_WORDS } from "@/lib/museum/plan";
 import { bond, buildEnd } from "@/lib/tanda-jadi";
+import { useSend } from "@/lib/transactions";
 
 /** A panel with cut corners and a ruled ground, like a specimen card in a display case. */
 export function Frame({ className = "", children }: { className?: string; children: ReactNode }) {
@@ -55,6 +57,10 @@ export function Chamber({
   onBack,
   onMap,
   onCreator,
+  reactions,
+  onReacted,
+  onPlace,
+  hasRoom,
 }: {
   address: string;
   /** Missing for a campaign the museum has no floor for; it can still be opened by its link. */
@@ -64,7 +70,14 @@ export function Chamber({
   onMap: () => void;
   /** Opens the record of the wallet that made this. */
   onCreator: (creator: string) => void;
+  /** How often it was reacted to, by kind. Missing until the notes were read. */
+  reactions: ReactionCounts | undefined;
+  onReacted: () => void;
+  /** Starts choosing an annex plot for it. Only given to the wallet that created it. */
+  onPlace?: () => void;
+  hasRoom: boolean;
 }) {
+  const { send, busy } = useSend();
   const stage = useRef<HTMLDivElement>(null);
   const inspector = useRef<Inspector | null>(null);
   const kind = exhibit?.kind;
@@ -136,6 +149,43 @@ export function Chamber({
               </button>
             </Fact>
           </dl>
+          <div className="border-t border-paper/15 px-5 py-4">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-lime">Reactions</p>
+            <div className="mt-2 flex gap-1.5">
+              {REACTIONS.map(({ kind, sign, label }) => (
+                <button
+                  key={kind}
+                  type="button"
+                  title={label}
+                  aria-label={`${label}: ${reactions?.[kind] ?? 0} so far. React.`}
+                  disabled={busy !== null}
+                  onClick={async () => {
+                    const sent = await send(`react-${kind}`, {
+                      pending: "Signing your reaction",
+                      done: "Your reaction is on the record",
+                      build: async (payer) => [reactIx(payer, campaign.address, kind)],
+                    });
+                    if (sent) onReacted();
+                  }}
+                  className="flex h-9 flex-1 items-center justify-center gap-1.5 border border-paper/30 font-mono text-sm text-paper hover:border-lime disabled:opacity-50"
+                >
+                  <span aria-hidden>{sign}</span>
+                  {reactions?.[kind] ?? 0}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] leading-4 text-paper/55">
+              Each one is a transaction you sign. One wallet can react more than once, so this
+              counts reactions, not people. They gather a crowd round the exhibit.
+            </p>
+          </div>
+          {onPlace && (
+            <div className="border-t border-paper/15 px-5 py-4">
+              <button type="button" onClick={onPlace} className="hud-button w-full justify-center">
+                {hasRoom ? "Move its room" : "Build it a room in the Annex"}
+              </button>
+            </div>
+          )}
         </Frame>
       )}
 

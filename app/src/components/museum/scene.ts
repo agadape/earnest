@@ -15,6 +15,9 @@ import { buildWorld, FAR_WALL, FOREST, SKY } from "@/components/museum/world";
 import {
   canStand,
   type Exhibit,
+  PLOT_SIZE,
+  PLOTS,
+  ROOM_FLOORS,
   type Room,
   roomAt,
   type RoomId,
@@ -38,11 +41,14 @@ const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
 const SCREEN_UP = new THREE.Vector3(-1, 0, -1).normalize();
 const PITCH = Math.atan2(OFFSET.y, Math.hypot(OFFSET.x, OFFSET.z));
 const ZOOM_MAX = 84;
-const BOUNDS = { minX: -13, maxX: 23, minZ: -20, maxZ: 22 };
+const BOUNDS = { minX: -13, maxX: 46, minZ: -20, maxZ: 22 };
 const WALK = 5.2;
 const STRIDE = 11;
 const NEAR = 2.9;
 const START = { x: -6.4, z: 0 };
+// The most figures a crowd is drawn with, however many reactions there are.
+const CROWD_MOST = 10;
+const CROWD_SHIRTS = ["#e4572e", "#17bebb", "#ffc914", "#76b041", "#5b5f97", "#ff8cc6", "#2e86ab", "#f4f1de"];
 
 export type Direction = "up" | "down" | "left" | "right";
 
@@ -82,6 +88,12 @@ export class MuseumScene {
   private blocked: { x: number; z: number }[] = [...STATIONS];
   private readonly stationPick: THREE.Object3D[] = [];
   private readonly stationTags: HTMLDivElement[] = [];
+  // The free plots of the annex, shown and pickable only while a creator is choosing one.
+  private readonly plotRoot = new THREE.Group();
+  private plotPick: THREE.Object3D[] = [];
+  private readonly plotShape = new THREE.PlaneGeometry(PLOT_SIZE - 0.2, PLOT_SIZE - 0.2).rotateX(-Math.PI / 2);
+  private readonly plotFree = new THREE.MeshBasicMaterial({ color: LIME, transparent: true, opacity: 0.3, depthWrite: false });
+  private readonly plotChosen = new THREE.MeshBasicMaterial({ color: LIME, transparent: true, opacity: 0.85, depthWrite: false });
   // Other people in the museum right now, as the server last reported them.
   private readonly others = new Map<string, { figure: THREE.Group; tag: HTMLDivElement; x: number; z: number }>();
   private readonly objects = new Map<string, THREE.Object3D>();
@@ -157,18 +169,18 @@ export class MuseumScene {
     this.scene.background = new THREE.Color(SKY);
     this.scene.add(new THREE.HemisphereLight("#eaf6ff", "#8aa26f", 1.25));
     const sun = new THREE.DirectionalLight("#fff1d6", 3.1);
-    sun.position.set(-16, 26, -9);
-    sun.target.position.set(5, 0, 2);
+    sun.position.set(-4, 26, -10);
+    sun.target.position.set(17, 0, 1);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.bias = -0.0004;
     sun.shadow.radius = 3;
-    Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 1, far: 90 });
+    Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 34, bottom: -34, near: 1, far: 100 });
     this.scene.add(sun, sun.target);
 
     buildWorld(this.scene);
     this.buildStations();
-    this.scene.add(this.exhibitRoot);
+    this.scene.add(this.exhibitRoot, this.plotRoot);
 
     const ring = new THREE.RingGeometry(1.0, 1.12, 56);
     ring.rotateX(-Math.PI / 2);
@@ -310,6 +322,14 @@ export class MuseumScene {
     const flag = this.keep(new THREE.BoxGeometry(0.22, 0.22, 0.22));
     const halo = this.keep(new THREE.RingGeometry(1.2, 1.27, 56).rotateX(-Math.PI / 2));
     const light = this.keep(new THREE.PlaneGeometry(5.2, 5.2).rotateX(-Math.PI / 2));
+    // A creator's own room: a coloured floor, a post at each corner and a frame overhead.
+    const reach = PLOT_SIZE / 2 - 0.06;
+    const roomFloor = this.keep(new THREE.BoxGeometry(PLOT_SIZE, 0.06, PLOT_SIZE));
+    const roomPost = this.keep(new THREE.BoxGeometry(0.12, 2.4, 0.12));
+    const roomBeam = this.keep(new THREE.BoxGeometry(PLOT_SIZE, 0.12, 0.12));
+    const roomBeamAcross = this.keep(new THREE.BoxGeometry(0.12, 0.12, PLOT_SIZE));
+    const roomFloors = ROOM_FLOORS.map((color) => this.own(new THREE.MeshStandardMaterial({ color, roughness: 0.8 })));
+    const crowd: { x: number; z: number }[] = [];
 
     // What every exhibit has the same of is drawn once for all of them, not once each.
     const many = new Map<
@@ -349,7 +369,26 @@ export class MuseumScene {
 
       // A spotlight, and only on what is still asking for backers: light on everything is
       // light on nothing.
-      if (status === "funding") place("pool", light, bright, exhibit.x, 0.02, exhibit.z, false);
+      if (status === "funding") place("pool", light, bright, exhibit.x, 0.07, exhibit.z, false);
+
+      if (exhibit.plot !== undefined) {
+        const style = (exhibit.style ?? 0) % roomFloors.length;
+        place(`room-floor-${style}`, roomFloor, roomFloors[style], exhibit.x, 0.03, exhibit.z, false);
+        for (const [dx, dz] of [[-reach, -reach], [reach, -reach], [-reach, reach], [reach, reach]]) {
+          place("room-post", roomPost, base, exhibit.x + dx, 1.2, exhibit.z + dz, true);
+        }
+        for (const dz of [-reach, reach]) place("room-beam", roomBeam, base, exhibit.x, 2.46, exhibit.z + dz, false);
+        for (const dx of [-reach, reach]) place("room-beam-across", roomBeamAcross, base, exhibit.x + dx, 2.46, exhibit.z, false);
+      }
+
+      // The more reactions, the more figures gathered round it: on the two sides the view
+      // looks at, fanning out from the east.
+      const gathered = Math.min(CROWD_MOST, exhibit.reactions);
+      for (let index = 0; index < gathered; index++) {
+        const angle = 0.5 + (index - (gathered - 1) / 2) * 0.46;
+        const radius = 1.75 + (index % 2) * 0.4;
+        crowd.push({ x: exhibit.x + Math.cos(angle) * radius, z: exhibit.z + Math.sin(angle) * radius });
+      }
 
       const height = ended ? 0.34 : 0.72;
       place("skirt", skirt, base, exhibit.x, 0.05, exhibit.z, false);
@@ -388,7 +427,7 @@ export class MuseumScene {
       const plain: THREE.Object3D[] = [];
       if (status === "funding") {
         const ring = new THREE.Mesh(halo, limeFlat);
-        ring.position.y = 0.02;
+        ring.position.y = 0.075;
         group.add(ring);
         plain.push(ring);
       }
@@ -483,6 +522,24 @@ export class MuseumScene {
       this.exhibitRoot.add(mesh);
     }
 
+    if (crowd.length > 0) {
+      const figure = this.keep(
+        mergeGeometries([
+          new THREE.CylinderGeometry(0.13, 0.17, 0.5, 10).translate(0, 0.25, 0),
+          new THREE.SphereGeometry(0.13, 10, 8).translate(0, 0.63, 0),
+        ]),
+      );
+      const cloth = this.own(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.8 }));
+      const people = new THREE.InstancedMesh(figure, cloth, crowd.length);
+      crowd.forEach((spot, index) => {
+        people.setMatrixAt(index, new THREE.Matrix4().setPosition(spot.x, 0, spot.z));
+        people.setColorAt(index, new THREE.Color(CROWD_SHIRTS[index % CROWD_SHIRTS.length]));
+      });
+      people.instanceMatrix.needsUpdate = true;
+      people.castShadow = true;
+      this.exhibitRoot.add(people);
+    }
+
     for (const batch of many.values()) {
       const mesh = new THREE.InstancedMesh(batch.geometry, batch.material, batch.matrices.length);
       batch.matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
@@ -508,10 +565,10 @@ export class MuseumScene {
         ? (this.places.get(this.hot) ?? STATIONS.find((station) => station.id === this.hot))
         : undefined;
     this.hoverRing.visible = Boolean(hot);
-    if (hot) this.hoverRing.position.set(hot.x, 0.03, hot.z);
+    if (hot) this.hoverRing.position.set(hot.x, 0.08, hot.z);
     const open = this.selected ? this.places.get(this.selected) : undefined;
     this.selectRing.visible = Boolean(open);
-    if (open) this.selectRing.position.set(open.x, 0.035, open.z);
+    if (open) this.selectRing.position.set(open.x, 0.085, open.z);
 
     for (const [id, object] of this.objects) {
       const material = object.userData.material as THREE.MeshStandardMaterial;
@@ -683,6 +740,25 @@ export class MuseumScene {
       this.labels.appendChild(tag);
       this.stationTags.push(tag);
     }
+  }
+
+  /**
+   * Shows the free plots of the annex so one can be picked, with the chosen one marked, or
+   * hides them again when given `null`.
+   */
+  setPlacing(free: number[] | null, chosen: number | null) {
+    this.plotRoot.clear();
+    this.plotPick = [];
+    for (const index of free ?? []) {
+      const plot = PLOTS[index];
+      if (!plot) continue;
+      const mesh = new THREE.Mesh(this.plotShape, index === chosen ? this.plotChosen : this.plotFree);
+      mesh.position.set(plot.x, 0.1, plot.z);
+      mesh.userData.exhibit = `@plot:${index}`;
+      this.plotRoot.add(mesh);
+      this.plotPick.push(mesh);
+    }
+    this.dirty = true;
   }
 
   /** Stops drawing while something else covers the whole floor, and starts again after. */
@@ -1019,7 +1095,7 @@ export class MuseumScene {
 
   private pick(event: PointerEvent): string | null {
     this.aim(event);
-    const hit = this.raycaster.intersectObjects([...this.pickable, ...this.stationPick], false)[0];
+    const hit = this.raycaster.intersectObjects([...this.plotPick, ...this.pickable, ...this.stationPick], false)[0];
     return (hit?.object.userData.exhibit as string | undefined) ?? null;
   }
 
