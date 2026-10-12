@@ -9,7 +9,7 @@ import { CampaignView } from "@/components/campaign-view";
 import { useToasts } from "@/components/toasts";
 import { Chamber } from "@/components/museum/chamber";
 import { Board, CreatorRecord, DesignMode, PlotPicker } from "@/components/museum/hud";
-import type { Direction, MuseumScene } from "@/components/museum/scene";
+import type { MuseumScene } from "@/components/museum/scene";
 import type { Plot } from "@/lib/ledger";
 import { Cutscene, SCENES } from "@/components/museum/cutscene";
 import { useNotes } from "@/components/museum/use-notes";
@@ -579,16 +579,6 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   // Build mode is for choosing a plot and nothing else: no walking off, no opening exhibits.
   const covered = selected !== null || panel !== null || atDoor || intro !== null || placing !== null;
   useEffect(() => {
-    const KEYS: Record<string, Direction> = {
-      w: "up",
-      a: "left",
-      s: "down",
-      d: "right",
-      arrowup: "up",
-      arrowleft: "left",
-      arrowdown: "down",
-      arrowright: "right",
-    };
     const busy = (event: KeyboardEvent) => {
       const element = event.target;
       if (!(element instanceof Element) || element === document.body || element === host.current) {
@@ -617,11 +607,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         return;
       }
       if (event.ctrlKey || event.metaKey || event.altKey || busy(event) || covered) return;
-      const direction = KEYS[event.key.toLowerCase()];
-      if (direction) {
-        event.preventDefault();
-        scene.current?.key(direction, true);
-      } else if ((event.key === "Enter" || event.key.toLowerCase() === "e") && near) {
+      // Walking is by the pointer alone; the keys only open, close and zoom.
+      if ((event.key === "Enter" || event.key.toLowerCase() === "e") && near) {
         event.preventDefault();
         select(near);
       } else if (event.key === "+" || event.key === "=") {
@@ -630,19 +617,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         scene.current?.zoomBy(1 / 1.2);
       }
     };
-    const onUp = (event: KeyboardEvent) => {
-      const direction = KEYS[event.key.toLowerCase()];
-      if (direction) scene.current?.key(direction, false);
-    };
-    const onBlur = () => scene.current?.release();
     window.addEventListener("keydown", onDown);
-    window.addEventListener("keyup", onUp);
-    window.addEventListener("blur", onBlur);
-    return () => {
-      window.removeEventListener("keydown", onDown);
-      window.removeEventListener("keyup", onUp);
-      window.removeEventListener("blur", onBlur);
-    };
+    return () => window.removeEventListener("keydown", onDown);
   }, [selected, panel, select, near, covered, placing, intro, endIntro]);
 
   if (!MINT) {
@@ -708,15 +684,10 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         ref={host}
         tabIndex={0}
         role="application"
-        aria-label="The museum floor. W, A, S, D or the arrow keys walk; Enter opens what you stand next to; plus and minus zoom. Everything on the floor is also listed next to it."
+        aria-label="The museum floor. Click the floor to walk there; click an exhibit, or press Enter next to one, to open it; plus and minus zoom. Everything on the floor is also listed next to it."
         className="museum-floor absolute inset-0 cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime"
       />
 
-      {/* The corners of the picture fall off a little, the way a photograph's do. */}
-      <div aria-hidden className="museum-vignette pointer-events-none absolute inset-0" />
-      {/* The far and the near edge go a little soft, which makes a small world look small. */}
-      <div aria-hidden className="museum-soft museum-soft-far pointer-events-none absolute inset-x-0 top-0" />
-      <div aria-hidden className="museum-soft museum-soft-near pointer-events-none absolute inset-x-0 bottom-0" />
       {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
       <div
         aria-hidden
@@ -837,7 +808,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         <div className="flex flex-col items-center gap-2">
           {hint && (
             <p className="museum-dock pointer-events-auto flex items-center gap-3 px-4 py-2 text-xs text-paper/90">
-              W A S D or arrows walk · click the floor · Enter opens · drag to look
+              Click the floor to walk · click an exhibit to open it · drag to look
               <button type="button" aria-label="Got it" onClick={dismissHint} className="text-base leading-none text-paper/60 hover:text-lime">
                 ×
               </button>
@@ -847,8 +818,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
             <div className="museum-dock museum-dock-panel pointer-events-auto max-w-md px-5 py-4 text-xs leading-5 text-paper/85">
               <p className="text-sm font-semibold text-paper">How to get around</p>
               <p className="mt-1">
-                W A S D or the arrow keys walk. Click the floor to walk there. Enter, or a click, opens what
-                you stand next to. Drag to look around; plus and minus zoom.
+                Click the floor to walk there. Click an exhibit to open it. Drag to look around; scroll, or
+                plus and minus, zooms.
               </p>
               <p className="mt-2 text-sm font-semibold text-paper">Who is who</p>
               <p className="mt-1">

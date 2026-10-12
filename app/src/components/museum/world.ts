@@ -543,23 +543,9 @@ export function buildWorld(scene: THREE.Scene) {
     }
   };
   const lampGlow = new THREE.MeshBasicMaterial({ color: "#ffe9a8" });
-  // The warm patch a lamp throws on the ground: bright under it, gone a little way off.
-  const patch = document.createElement("canvas");
-  patch.width = patch.height = 64;
-  const patchPaint = patch.getContext("2d") as CanvasRenderingContext2D;
-  const warm = patchPaint.createRadialGradient(32, 32, 2, 32, 32, 32);
-  warm.addColorStop(0, "rgba(255,226,150,0.55)");
-  warm.addColorStop(1, "rgba(255,226,150,0)");
-  patchPaint.fillStyle = warm;
-  patchPaint.fillRect(0, 0, 64, 64);
-  const lampPool = new THREE.MeshBasicMaterial({
-    map: new THREE.CanvasTexture(patch),
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
   const lamp = (x: number, z: number, ground = 0) => {
-    laid(3.6, 3.6, x, z, lampPool, ground + 0.025);
+    // No patch of light under it: see-through layers are drawn over what is under them, and
+    // that adds up.
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 2.1, 8), woodDark);
     post.position.set(x, ground + 1.05, z);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lampGlow);
@@ -645,31 +631,6 @@ export function buildWorld(scene: THREE.Scene) {
     shrub.position.set(ENTRANCE.x - 1.2, 0.72, dz);
     shrub.castShadow = true;
     scene.add(tub, shrub);
-  }
-
-  // Where a wall meets the floor it is a little darker, the way corners are. A strip along the
-  // inside of every wall, dark at the wall and gone under a metre out.
-  const dusk = document.createElement("canvas");
-  dusk.width = 4;
-  dusk.height = 64;
-  const duskPaint = dusk.getContext("2d") as CanvasRenderingContext2D;
-  const falloff = duskPaint.createLinearGradient(0, 0, 0, 64);
-  falloff.addColorStop(0, "rgba(40,28,16,0.34)");
-  falloff.addColorStop(1, "rgba(40,28,16,0)");
-  duskPaint.fillStyle = falloff;
-  duskPaint.fillRect(0, 0, 4, 64);
-  const corner = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(dusk), transparent: true, depthWrite: false });
-  /** A strip of shade `length` long at a point, its dark edge towards the wall it is turned to. */
-  const shade = (length: number, x: number, z: number, turn: number) => {
-    weld(new THREE.PlaneGeometry(length, 1.1).rotateX(-Math.PI / 2).rotateY(turn).translate(x, 0.016, z), corner, false);
-  };
-  for (const room of ROOMS) {
-    const inX = room.width / 2 - THICK / 2 - 0.55;
-    const inZ = room.depth / 2 - THICK / 2 - 0.55;
-    shade(room.width - THICK, room.x, room.z - inZ, 0);
-    shade(room.width - THICK, room.x, room.z + inZ, Math.PI);
-    shade(room.depth - THICK, room.x - inX, room.z, Math.PI / 2);
-    shade(room.depth - THICK, room.x + inX, room.z, -Math.PI / 2);
   }
 
   // ----- Dressing -------------------------------------------------------------------------

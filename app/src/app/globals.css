@@ -365,7 +365,7 @@ dialog::backdrop {
 
 /* The floor's colours are pushed a little, the way a printed picture's are. */
 .museum-floor canvas {
-  filter: saturate(1.12) contrast(1.04);
+  /* No filter: the browser would redo it for every picture drawn. */
 }
 /*
  * A band at the far edge and one at the near edge where the picture goes out of focus, fading
@@ -374,8 +374,6 @@ dialog::backdrop {
  */
 .museum-soft {
   height: 17%;
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
 }
 .museum-soft-far {
   mask-image: linear-gradient(to bottom, #000, transparent);
@@ -396,9 +394,7 @@ dialog::backdrop {
 .museum-dock {
   border: 1px solid rgb(240 239 231 / 0.14);
   border-radius: 9999px;
-  background: rgb(23 25 23 / 0.84);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgb(23 25 23 / 0.92);
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
   scrollbar-width: none;
 }

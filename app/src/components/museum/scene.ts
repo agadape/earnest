@@ -8,7 +8,6 @@
  * carry three.js.
  */
 import * as THREE from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -98,7 +97,7 @@ interface Wanderer {
 }
 
 // When the only thing moving is the strollers, this many pictures a second is plenty.
-const STROLL_FRAMES = 24;
+const STROLL_FRAMES = LOOK.strollFrames;
 
 export class MuseumScene {
   private readonly renderer: THREE.WebGLRenderer;
@@ -201,11 +200,13 @@ export class MuseumScene {
     private readonly calm: boolean,
   ) {
     // Throws where WebGL is not available; the page shows the catalog instead.
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
+    // Speed comes first here. The stronger graphics card is asked for where a machine has
+    // two, edges are not smoothed, and the picture has one pixel per pixel of the page.
+    this.renderer = new THREE.WebGLRenderer({ antialias: LOOK.smooth, powerPreference: "high-performance" });
     // A sharp screen has four pixels where an ordinary one has one; drawing all of them is
     // most of what makes this heavy, and at this distance a little over one is enough.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, LOOK.sharpness));
+    this.renderer.shadowMap.enabled = LOOK.shadows;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // Shadows are drawn once, when the exhibits are hung: nothing that casts one moves.
     this.renderer.shadowMap.autoUpdate = false;
@@ -249,18 +250,12 @@ export class MuseumScene {
     const backdrop = new THREE.CanvasTexture(card);
     backdrop.colorSpace = THREE.SRGBColorSpace;
     this.scene.background = backdrop;
-    // Something for the brass and the glass to reflect: a plain lit room, blurred. It is made
-    // once and costs nothing a frame.
-    const reflections = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = reflections.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = LOOK.reflections;
-    reflections.dispose();
     this.scene.add(new THREE.HemisphereLight(LOOK.sky, LOOK.ground, LOOK.skyLight));
     // A warm sun, low enough in the north-west for the long shadows of late afternoon.
     const sun = new THREE.DirectionalLight(LOOK.sun, LOOK.sunLight);
     sun.position.set(17 - 26, 22, 1 - 15);
     sun.target.position.set(17, 0, 1);
-    sun.castShadow = true;
+    sun.castShadow = LOOK.shadows;
     sun.shadow.mapSize.set(LOOK.shadowMap, LOOK.shadowMap);
     sun.shadow.bias = LOOK.shadowBias;
     sun.shadow.normalBias = LOOK.shadowNormalBias;
@@ -438,7 +433,6 @@ export class MuseumScene {
         }),
       );
     const bright = lit(LOOK.poolAsking);
-    const soft = lit(LOOK.pool);
 
     const plinthTall = this.keep(new THREE.BoxGeometry(1.3, 0.72, 1.3));
     const plinthLow = this.keep(new THREE.BoxGeometry(1.3, 0.34, 1.3));
@@ -513,7 +507,7 @@ export class MuseumScene {
 
       // A pool of light under every exhibit, as a museum has, and a brighter one under what
       // is still asking for backers. They are pictures on the floor, not lamps.
-      place(status === "funding" ? "pool" : "pool-soft", light, status === "funding" ? bright : soft, exhibit.x, 0.07, exhibit.z, false);
+      if (status === "funding") place("pool", light, bright, exhibit.x, 0.07, exhibit.z, false);
 
       if (exhibit.plot !== undefined) {
         const style = (exhibit.style ?? 0) % roomFloors.length;
@@ -987,10 +981,10 @@ export class MuseumScene {
         other = { figure, tag, x: entry.x, z: entry.z };
         this.others.set(entry.id, other);
       }
+      if (other.x !== entry.x || other.z !== entry.z || other.tag.textContent !== entry.name) this.dirty = true;
       other.x = entry.x;
       other.z = entry.z;
       other.tag.textContent = entry.name;
-      this.dirty = true;
     }
   }
 
@@ -998,7 +992,8 @@ export class MuseumScene {
    * Shows the wallets that visited before as figures strolling the rooms, each with its
    * short address. They come and go with the list; they are not people who are here now.
    */
-  setWanderers(list: { id: string; name: string }[]) {
+  setWanderers(all: { id: string; name: string }[]) {
+    const list = all.slice(0, LOOK.strollers);
     const wanted = new Set(list.map((entry) => entry.id));
     for (const [id, wanderer] of this.wanderers) {
       if (wanted.has(id)) continue;
@@ -1059,7 +1054,7 @@ export class MuseumScene {
       }
       const next = wanderer.path[0];
       if (!next) {
-        wanderer.wait = 0.6 + Math.random() * 2.4;
+        wanderer.wait = LOOK.strollRest * (0.6 + Math.random() * 0.8);
         figure.position.y = 0;
         continue;
       }
