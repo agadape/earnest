@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CampaignList, NetworkNotice, SetupNotice } from "@/components/campaign-list";
 import { CampaignView } from "@/components/campaign-view";
-import type { MuseumScene } from "@/components/museum/scene";
+import type { Direction, MuseumScene } from "@/components/museum/scene";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
 import { formatDuration, shortAddress, usd } from "@/lib/format";
@@ -70,6 +70,7 @@ export function Museum() {
   const [room, setRoom] = useState<RoomId>("unmade");
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [near, setNear] = useState<string | null>(null);
   // The plaque at the door: what this place is, for someone who has never heard of it.
   const [atDoor, setAtDoor] = useState(true);
 
@@ -99,6 +100,7 @@ export function Museum() {
             onHover: (id, x, y) => setHover(id ? { id, x, y } : null),
             onSelect: (id) => select(id),
             onRoom: setRoom,
+            onNear: setNear,
           },
           calm,
         );
@@ -136,7 +138,7 @@ export function Museum() {
   }, [ready, selected, signature]);
 
   useEffect(() => {
-    if (ready) scene.current?.setVisitor(publicKey !== null);
+    if (ready) scene.current?.setVisitor(publicKey ? shortAddress(publicKey) : null);
   }, [ready, publicKey]);
 
   // The first look goes to a room with something in it, the main hall if it has anything.
@@ -148,14 +150,54 @@ export function Museum() {
     if (busiest && busiest.id !== "unmade" && !selected) scene.current?.focusRoom(busiest.id);
   }, [ready, museum, selected]);
 
+  // Walking is done with the keyboard anywhere on the page, except while something is being
+  // typed or a control has the keys: a button's own Enter and a text box's letters come first.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && selected) select(null);
-      else if (event.key === "Escape") setAtDoor(false);
+    const KEYS: Record<string, Direction> = {
+      w: "up", a: "left", s: "down", d: "right",
+      arrowup: "up", arrowleft: "left", arrowdown: "down", arrowright: "right",
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selected, select]);
+    const busy = (event: KeyboardEvent) => {
+      const element = event.target;
+      if (!(element instanceof Element) || element === document.body || element === host.current) {
+        return false;
+      }
+      return element.closest("input, textarea, select, button, a, summary, dialog, aside, [contenteditable]") !== null;
+    };
+    const onDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (selected) select(null);
+        else setAtDoor(false);
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey || busy(event) || atDoor) return;
+      const direction = KEYS[event.key.toLowerCase()];
+      if (direction) {
+        event.preventDefault();
+        scene.current?.key(direction, true);
+      } else if ((event.key === "Enter" || event.key.toLowerCase() === "e") && near && !selected) {
+        event.preventDefault();
+        select(near);
+      } else if (event.key === "+" || event.key === "=") {
+        scene.current?.zoomBy(1.2);
+      } else if (event.key === "-") {
+        scene.current?.zoomBy(1 / 1.2);
+      }
+    };
+    const onUp = (event: KeyboardEvent) => {
+      const direction = KEYS[event.key.toLowerCase()];
+      if (direction) scene.current?.key(direction, false);
+    };
+    const onBlur = () => scene.current?.release();
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [selected, select, near, atDoor]);
 
   if (!MINT) {
     return (
@@ -184,25 +226,7 @@ export function Museum() {
   const unhung = museum ? museum.counts[room] - inRoom.length : 0;
   const hovered = hover && museum?.exhibits.find((exhibit) => exhibit.id === hover.id);
   const open = selected ? museum?.exhibits.find((exhibit) => exhibit.id === selected) : undefined;
-
-  const pan = (event: React.KeyboardEvent) => {
-    const step = 60;
-    const moves: Record<string, [number, number]> = {
-      ArrowLeft: [step, 0],
-      ArrowRight: [-step, 0],
-      ArrowUp: [0, step],
-      ArrowDown: [0, -step],
-    };
-    const move = moves[event.key];
-    if (move) {
-      event.preventDefault();
-      scene.current?.panBy(...move);
-    } else if (event.key === "+" || event.key === "=") {
-      scene.current?.zoomBy(1.2);
-    } else if (event.key === "-") {
-      scene.current?.zoomBy(1 / 1.2);
-    }
-  };
+  const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-carbon text-paper">
@@ -210,8 +234,7 @@ export function Museum() {
         ref={host}
         tabIndex={0}
         role="application"
-        aria-label="The museum floor. Arrow keys move the view, plus and minus zoom. The exhibits are listed next to it."
-        onKeyDown={pan}
+        aria-label="The museum floor. W, A, S, D or the arrow keys walk; Enter opens the exhibit you stand next to; plus and minus zoom. The exhibits are also listed next to the floor."
         className="absolute inset-0 cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime"
       />
 
@@ -317,17 +340,18 @@ export function Museum() {
                 <>
                   You are walking the floor as{" "}
                   <span className="font-mono text-paper">{shortAddress(publicKey)}</span>. Visiting
-                  pledges nothing; only taking a seat does.
+                  pledges nothing; only taking a seat does. Nobody else is shown: this museum
+                  does not track who is in it.
                 </>
               ) : (
-                "Connect a wallet to walk the floor as a visitor. Looking around needs none."
+                "You are walking as a guest. Connect a wallet and the figure on the floor carries its address. Looking around needs none."
               )}
             </p>
           </nav>
 
           <div className="pointer-events-auto flex items-center gap-1.5">
             <p className="mr-2 hidden text-xs text-paper/60 md:block">
-              Drag to move · scroll to zoom · click an exhibit
+              WASD or arrows walk · click the floor to go there · drag to look · scroll to zoom
             </p>
             {(
               [
@@ -354,6 +378,28 @@ export function Museum() {
           </div>
         </div>
       </div>
+
+      {nearby && !selected && !atDoor && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-10 flex justify-center px-4 sm:bottom-28">
+          <button
+            type="button"
+            onClick={() => select(nearby.id)}
+            className="pointer-events-auto flex max-w-full items-center gap-3 border border-carbon bg-lime px-4 py-2 text-left text-carbon shadow-xl hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
+          >
+            <span className="hidden border border-carbon px-1.5 py-0.5 font-mono text-[11px] sm:inline">
+              Enter
+            </span>
+            <span className="min-w-0">
+              <span className="block font-mono text-[11px] uppercase tracking-wider">
+                Open exhibit {nearby.code}
+              </span>
+              <span className="block truncate text-sm font-semibold">
+                {nearby.campaign.title || "Untitled campaign"}
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
 
       {hovered && !selected && now !== null && (
         <div
@@ -441,9 +487,10 @@ export function Museum() {
           <header className="flex items-start justify-between gap-4 border-b border-stone-300 px-5 py-3">
             <div className="min-w-0">
               <p className="font-mono text-xs uppercase tracking-widest text-stone-600">
+                Commitment chamber ·{" "}
                 {open
-                  ? `Exhibit ${open.code} · ${ROOMS.find(({ id }) => id === open.room)?.name}`
-                  : "Exhibit in storage"}
+                  ? `exhibit ${open.code} · ${ROOMS.find(({ id }) => id === open.room)?.name}`
+                  : "exhibit in storage"}
               </p>
               <p className="mt-0.5 text-xs leading-5 text-stone-500">
                 The object on the plinth is a stand-in. Campaigns carry no pictures.

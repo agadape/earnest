@@ -11,7 +11,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 
 import type { Campaign, Status } from "@/lib/tanda-jadi";
 
-import { arrange, kindOf, ROOMS, seatMarkers } from "./plan";
+import { arrange, canStand, kindOf, roomAt, ROOMS, route, seatMarkers, standBy, stepFrom } from "./plan";
 
 const NOW = 1_000_000;
 const DAY = 86_400;
@@ -111,4 +111,65 @@ test("a campaign always gets the same stand-in object", () => {
   assert.equal(kindOf(one), kindOf({ ...one }));
   assert.equal(kindOf(campaign(2, "funding", { title: "A CLI that diffs two IDLs" })), "screen");
   assert.notEqual(kindOf(one), "screen");
+});
+
+/** Walks the way the scene does: at the next point, going round what is in the way. */
+function walk(from: { x: number; z: number }, to: { x: number; z: number }, exhibits: { x: number; z: number }[]) {
+  const at = { ...from };
+  const step = 0.18;
+  for (const [x, z] of route(from, to)) {
+    for (let tries = 0; tries < 2000; tries++) {
+      const dx = x - at.x;
+      const dz = z - at.z;
+      const left = Math.hypot(dx, dz);
+      if (left <= step) {
+        if (canStand(x, z, exhibits)) Object.assign(at, { x, z });
+        break;
+      }
+      const next = stepFrom(at, (dx / left) * step, (dz / left) * step, exhibits);
+      if (!next) return null;
+      Object.assign(at, next);
+    }
+  }
+  return at;
+}
+
+test("a visitor can walk from the door to every exhibit in a full museum", () => {
+  // Every place in every room taken: the hardest floor to cross.
+  const full = ROOMS.flatMap((room) => room.slots);
+  const door = { x: -6.4, z: 0 };
+  assert.ok(canStand(door.x, door.z, full), "the place a visitor starts is free");
+
+  for (const room of ROOMS) {
+    for (const slot of room.slots) {
+      const goal = standBy(slot);
+      assert.ok(canStand(goal.x, goal.z, full), `there is room to stand by ${room.code} ${slot.x},${slot.z}`);
+      const reached = walk(door, goal, full);
+      assert.ok(reached, `the way to ${room.code} ${slot.x},${slot.z} is not blocked`);
+      assert.ok(
+        Math.hypot(reached.x - goal.x, reached.z - goal.z) < 0.3,
+        `the walk to ${room.code} ${slot.x},${slot.z} ends beside it`,
+      );
+      assert.equal(roomAt(reached.x, reached.z), room.id);
+    }
+  }
+});
+
+test("nobody stands in a wall, on a plinth or outside the building", () => {
+  const hall = ROOMS[0];
+  const exhibits = [hall.slots[0]];
+  assert.equal(canStand(hall.slots[0].x, hall.slots[0].z, exhibits), false);
+  assert.equal(canStand(hall.x - hall.width / 2 + 0.2, hall.z + 3, exhibits), false);
+  assert.equal(canStand(40, 40, exhibits), false);
+  // The middle of a doorway is floor.
+  assert.equal(canStand(9, 0, exhibits), true);
+  assert.equal(canStand(0, 7, exhibits), true);
+  // Beside a doorway, where the wall is, is not.
+  assert.equal(canStand(9, 2.5, exhibits), false);
+});
+
+test("walking between two side rooms goes through the hall", () => {
+  const points = route({ x: 15.5, z: 2 }, { x: 0, z: 14 });
+  assert.ok(points.length >= 5);
+  assert.ok(points.some(([x, z]) => roomAt(x, z) === "unmade"));
 });

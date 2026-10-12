@@ -87,11 +87,15 @@ export const ROOMS: Room[] = [
   },
 ];
 
-/** Where two rooms meet: a strip of floor through the gap in their walls. */
+/** The way in: a porch on the west side of the main hall. */
+export const ENTRANCE = { x: -9.5, z: 0, width: 3, depth: 3.2, along: "x" as const };
+
+/** Where two rooms meet, or the building meets the outside: floor through a gap in the walls. */
 export const CORRIDORS = [
-  { x: 9, z: 0, width: 2, depth: 3.2 },
-  { x: 0, z: -7, width: 3.2, depth: 2 },
-  { x: 0, z: 7, width: 3.2, depth: 2 },
+  ENTRANCE,
+  { x: 9, z: 0, width: 2, depth: 3.2, along: "x" as const },
+  { x: 0, z: -7, width: 3.2, depth: 2, along: "z" as const },
+  { x: 0, z: 7, width: 3.2, depth: 2, along: "z" as const },
 ];
 
 const ROOM_OF: Record<Status, RoomId> = {
@@ -194,3 +198,91 @@ export const STATUS_WORDS: Record<Status, string> = {
   failed: "Didn't fill",
   braked: "Stopped by backers",
 };
+
+/** How close to a wall a visitor can stand. */
+const MARGIN = 0.8;
+/** How much room an exhibit takes up on the floor, as a radius. */
+export const EXHIBIT_RADIUS = 1.05;
+
+/** Whether a visitor can stand at a point: on a floor, clear of the walls and of every exhibit. */
+export function canStand(x: number, z: number, exhibits: { x: number; z: number }[]): boolean {
+  const onRoom = ROOMS.some(
+    (room) =>
+      Math.abs(x - room.x) <= room.width / 2 - MARGIN && Math.abs(z - room.z) <= room.depth / 2 - MARGIN,
+  );
+  // A corridor is walked along its length, a little into the rooms it joins.
+  const onCorridor = CORRIDORS.some((corridor) => {
+    const lengthwise = corridor.along;
+    const halfWidth = (lengthwise === "x" ? corridor.depth : corridor.width) / 2 - 0.45;
+    const halfLength = (lengthwise === "x" ? corridor.width : corridor.depth) / 2 + MARGIN + 0.2;
+    return lengthwise === "x"
+      ? Math.abs(x - corridor.x) <= halfLength && Math.abs(z - corridor.z) <= halfWidth
+      : Math.abs(z - corridor.z) <= halfLength && Math.abs(x - corridor.x) <= halfWidth;
+  });
+  if (!onRoom && !onCorridor) return false;
+  return exhibits.every((exhibit) => Math.hypot(x - exhibit.x, z - exhibit.z) >= EXHIBIT_RADIUS);
+}
+
+/** The room a point on the floor belongs to: the one it is in, or the nearest. */
+export function roomAt(x: number, z: number): RoomId {
+  let best = ROOMS[0];
+  let least = Infinity;
+  for (const room of ROOMS) {
+    const dx = Math.max(0, Math.abs(x - room.x) - room.width / 2);
+    const dz = Math.max(0, Math.abs(z - room.z) - room.depth / 2);
+    const distance = Math.hypot(dx, dz);
+    if (distance < least) {
+      least = distance;
+      best = room;
+    }
+  }
+  return best.id;
+}
+
+// Each side room is reached through one door in the main hall: a point just inside the room
+// and a point just inside the hall.
+const DOORS: Partial<Record<RoomId, { inside: [number, number]; hall: [number, number] }>> = {
+  workshop: { inside: [11.4, 0], hall: [6.6, 0] },
+  realized: { inside: [0, -9.4], hall: [0, -4.6] },
+  almost: { inside: [0, 9.4], hall: [0, 4.6] },
+};
+
+/** The points to walk through, in order, to get from one place to another by the doors. */
+export function route(from: { x: number; z: number }, to: { x: number; z: number }): [number, number][] {
+  const start = roomAt(from.x, from.z);
+  const end = roomAt(to.x, to.z);
+  const points: [number, number][] = [];
+  if (start !== end) {
+    const out = DOORS[start];
+    if (out) points.push(out.inside, out.hall);
+    const into = DOORS[end];
+    if (into) points.push(into.hall, into.inside);
+  }
+  points.push([to.x, to.z]);
+  return points;
+}
+
+/** Where a visitor stands to look at an exhibit: in front of it, by its seats. */
+export const standBy = (place: { x: number; z: number }) => ({ x: place.x + 1.25, z: place.z + 1.75 });
+
+// When the way ahead is blocked, the turns to try, in degrees: a little to one side first.
+const TURNS = [0, 25, -25, 50, -50, 75, -75, 95, -95];
+
+/**
+ * One step from a point towards a direction, going round whatever is in the way. Returns where
+ * the step ends, or `null` if there is no way forward at all.
+ */
+export function stepFrom(
+  at: { x: number; z: number },
+  dx: number,
+  dz: number,
+  exhibits: { x: number; z: number }[],
+): { x: number; z: number } | null {
+  for (const turn of TURNS) {
+    const angle = (turn * Math.PI) / 180;
+    const x = at.x + dx * Math.cos(angle) - dz * Math.sin(angle);
+    const z = at.z + dx * Math.sin(angle) + dz * Math.cos(angle);
+    if (canStand(x, z, exhibits)) return { x, z };
+  }
+  return null;
+}
