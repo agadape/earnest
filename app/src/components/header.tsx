@@ -4,6 +4,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import Link from "next/link";
 
 import { FaucetButton } from "@/components/faucet-button";
+import { Mark } from "@/components/mark";
 import { WalletButton } from "@/components/wallet-button";
 import { BRAND } from "@/lib/brand";
 import { useBalance } from "@/lib/chain";
@@ -19,7 +20,8 @@ export function Header() {
   return (
     <header className="z-30 border-b border-stone-200 bg-white/90 backdrop-blur sm:sticky sm:top-0">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:gap-x-8 sm:px-6">
-        <Link href="/" className="text-lg font-semibold tracking-tight">
+        <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <Mark className="h-6 w-6" />
           {BRAND}
         </Link>
         <nav className="order-last flex w-full gap-6 text-sm text-stone-600 sm:order-none sm:w-auto">

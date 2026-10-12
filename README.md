@@ -99,6 +99,7 @@ npm run setup                  # config + a demo token standing in for USDC, wri
 npm run demo                   # two scripted campaigns: one fills and is braked, one fails
 npm run dev                    # the web app on http://localhost:3000
 npm run stage                  # three campaigns one step short of their ending, for a walkthrough
+npm run showcase               # the same campaigns set to stay open for weeks, for visitors
 npm run faucet -- <address>    # demo dollars for your own wallet
 npm run keeper                 # optional: a bot that returns pledges and sends payouts by itself
 ```
@@ -210,3 +211,7 @@ Stated plainly, because a reader will find them anyway.
 - **Whoever holds the program's upgrade authority can change all of the above.** That is the one
   place where users have to trust the team.
 - **Not audited.** Demo token only; do not put real money through it.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

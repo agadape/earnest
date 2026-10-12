@@ -14,6 +14,10 @@
  *
  *   npm run stage
  *
+ * `npm run showcase` sets the same stage to last, for visitors who arrive when nobody is at the
+ * keyboard: the campaigns stay open for weeks, the build is already running with a seat on
+ * offer in it, and the script exits as soon as everything is in place.
+ *
  * Run `npm run setup` first, and leave this running until it says it is done: it is what pulls
  * the two brakes.
  */
@@ -55,14 +59,17 @@ import {
   waitUntil,
 } from "./lib";
 
+const SHOWCASE = process.argv.includes("showcase");
+const DAY = 86_400;
+
 /** How long the campaign that is meant to fail stays open. */
-const MISS_SECS = Number(process.env.MISS_SECS ?? 135);
+const MISS_SECS = Number(process.env.MISS_SECS ?? (SHOWCASE ? 21 * DAY : 135));
 /**
  * How long the other two stay open. Long enough to get through a take without hurry, short enough
  * that an unused stage is off the list of open campaigns before the next one is set.
  */
-const OPEN_SECS = Number(process.env.OPEN_SECS ?? 1_800);
-const BUILD_SECS = Number(process.env.BUILD_SECS ?? 600);
+const OPEN_SECS = Number(process.env.OPEN_SECS ?? (SHOWCASE ? 30 * DAY : 1_800));
+const BUILD_SECS = Number(process.env.BUILD_SECS ?? (SHOWCASE ? 30 * DAY : 600));
 /** How long the build runs before the scripted backers lose patience. */
 const QUIET_SECS = Number(process.env.QUIET_SECS ?? 20);
 /**
@@ -201,7 +208,16 @@ async function main() {
   });
   await pledge(build, [rina, sari, tono, wati]);
   await say(build, "The spec is written. I start the day the last seat is taken.");
-  log("The build is ready: four of five seats taken.");
+  if (SHOWCASE) {
+    // Nobody is there to take the last seat, so a backer does, and the build is under way
+    // when a visitor arrives. One seat is on offer so that they can buy in and try the brake.
+    await pledge(build, [yoga]);
+    await say(build, "Day 1: the extension reads error codes straight from the IDL.");
+    await send([await listSeatIx(program, build.address, wati.publicKey, 10_500_000n)], wati);
+    log("The build is under way, with seat 4 on offer for $10.50.");
+  } else {
+    log("The build is ready: four of five seats taken.");
+  }
 
   // The record again, now that both of its campaigns are over: what is owed gets paid.
   await waitUntil(Math.max(missed.deadline, shippedAt));
@@ -217,7 +233,7 @@ async function main() {
   ).catch(alreadySent);
   log("The record is ready: one campaign ran to the end, one did not fill and paid its bonus.");
 
-  if (process.stdin.isTTY) {
+  if (process.stdin.isTTY && !SHOWCASE) {
     const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
     await prompt.question(
       `\nThe last campaign fails ${MISS_SECS} seconds after it opens. ` +
@@ -238,6 +254,17 @@ async function main() {
     upfrontBps: 2_000,
   });
   await pledge(miss, [yoga]);
+  if (SHOWCASE) {
+    console.log(`
+The showcase is set and stays up by itself.
+
+  Taking pledges, a bonus seat left   ${link(miss)}
+  A seat on offer, three sales        ${link(market)}
+  Being built, a seat on offer        ${link(build)}
+  The creator's record                ${SITE_URL}/creator/${budi.publicKey.toBase58()}
+`);
+    return;
+  }
   const left = miss.deadline - (await chainTime());
 
   console.log(`

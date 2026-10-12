@@ -1,4 +1,4 @@
-# Tanda Jadi web app
+# Earnest web app
 
 The interface, the TypeScript client (`src/lib/tanda-jadi/`) and the dev scripts (`scripts/`).
 How to run everything is in the README one level up.
