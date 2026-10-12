@@ -26,8 +26,12 @@ export const VISUAL = {
   toonBands: [158, 208, 255],
 
   // ----- Outline -------------------------------------------------------------------------
-  /** Whether the finished picture goes through the outline and glow passes at all. */
-  post: true,
+  /**
+   * Whether the finished picture goes through the outline pass. It draws the whole floor a
+   * second time every frame, which was too much for an ordinary laptop, so it is off unless
+   * the address asks for it with `?ink=1`.
+   */
+  post: false,
   ink: "#1f1a17",
   /** How wide the line is, in screen pixels at one pixel per pixel. */
   inkWidth: 1.1,
@@ -35,8 +39,6 @@ export const VISUAL = {
   /** How big a jump in depth, and how big a turn of a surface, counts as an edge. */
   inkDepthEdge: 0.0009,
   inkNormalEdge: 0.55,
-  glow: 0.12,
-  glowAbove: 0.97,
 
   // ----- People and exhibits -------------------------------------------------------------
   /** How many times life size the people are drawn, so they can be found at a glance. */

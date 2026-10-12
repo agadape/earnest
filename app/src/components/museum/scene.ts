@@ -12,7 +12,6 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { Celebrations } from "@/components/museum/celebrations";
@@ -327,7 +326,9 @@ export class MuseumScene {
     this.scene.add(this.visitor);
     this.setVisitor(null);
 
-    if (LOOK.post && this.eased === 0) this.finish();
+    // The outline costs a second drawing of the floor each frame. Only where it was asked for.
+    const inked = LOOK.post || new URLSearchParams(window.location.search).has("ink");
+    if (inked && this.eased === 0) this.finish();
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(host);
     this.resize();
@@ -1220,11 +1221,11 @@ export class MuseumScene {
     const width = Math.max(1, this.host.clientWidth);
     const height = Math.max(1, this.host.clientHeight);
     const ratio = this.renderer.getPixelRatio();
-    const target = new THREE.WebGLRenderTarget(width * ratio, height * ratio, { type: THREE.HalfFloatType, samples: 4 });
+    const target = new THREE.WebGLRenderTarget(width * ratio, height * ratio, { samples: 4 });
     const composer = new EffectComposer(this.renderer, target);
     composer.addPass(new RenderPass(this.scene, this.camera));
-    composer.addPass(new InkPass(this.scene, this.camera, width, height, ratio));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), LOOK.glow, 0.6, LOOK.glowAbove));
+    // Where things are and which way they face is read at half size: the line does not need more.
+    composer.addPass(new InkPass(this.scene, this.camera, width, height, ratio * 0.5));
     composer.addPass(new OutputPass());
     this.composer = composer;
   }
