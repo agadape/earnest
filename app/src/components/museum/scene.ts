@@ -13,7 +13,8 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
 import { person } from "@/components/museum/people";
-import { buildWorld, FAR_WALL, FOREST, SKY } from "@/components/museum/world";
+import { PALETTE } from "@/components/museum/palette";
+import { buildWorld, FAR_WALL, ISLAND } from "@/components/museum/world";
 import {
   canStand,
   type Exhibit,
@@ -61,6 +62,10 @@ export const LOOK = {
   /** How much the metal and glass reflect of the room made for them. */
   reflections: 0.16,
   shadowMap: 2048,
+  /** How many times life size the people are drawn, so they can be found at a glance. */
+  people: 1.7,
+  /** How long an exhibit takes to print itself up to where its seats are, in seconds. */
+  printSeconds: 1.2,
   /** How bright the pool of light under an exhibit is, and under one still asking for backers. */
   pool: 0.2,
   poolAsking: 0.55,
@@ -79,6 +84,19 @@ export interface SceneHandlers {
   onRoom(room: RoomId): void;
   /** The exhibit the visitor is standing next to. */
   onNear(id: string | null): void;
+}
+
+/** One exhibit being printed: the planes that cut its solid part and its drawing, and how far along it is. */
+interface Print {
+  id: string;
+  solid: THREE.Plane;
+  drawing: THREE.Plane;
+  scan: THREE.Object3D;
+  foot: number;
+  tall: number;
+  from: number;
+  to: number;
+  spent: number;
 }
 
 /** A past visitor's figure: where it is going, how long it is standing still, how fast it walks. */
@@ -160,8 +178,15 @@ export class MuseumScene {
   private strain = 0;
   // Whether another visitor is still on the way to where they were last reported.
   private astir = false;
+  private printing = false;
   // Signposts stood on the floor while the introduction plays: this is what is being talked about.
   private marks: { x: number; y: number; z: number; tag: HTMLDivElement }[] = [];
+  // Exhibits still asking for backers are printed up to where their seats are. Each one here is
+  // on its way from how full it was to how full it is; `printed` remembers the last, by id.
+  private prints: Print[] = [];
+  private readonly printed = new Map<string, number>();
+  // The name of each room, as a label over its far corner.
+  private readonly roomTags: { room: Room; tag: HTMLDivElement; name: HTMLSpanElement }[] = [];
   // Wallets that visited before, strolling the rooms while their owners are away.
   private readonly wanderers = new Map<string, Wanderer>();
   private eased = 0;
@@ -188,9 +213,18 @@ export class MuseumScene {
     // Shadows are drawn once, when the exhibits are hung: nothing that casts one moves.
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = true;
+    // Exhibits are cut by planes of their own as they print.
+    this.renderer.localClippingEnabled = true;
     this.renderer.domElement.style.display = "block";
     this.renderer.domElement.style.touchAction = "none";
     host.appendChild(this.renderer.domElement);
+    // A phone, or a machine with little memory or few cores, starts on the plainer picture
+    // instead of finding out the slow way.
+    const modest =
+      window.innerWidth < 768 ||
+      ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) <= 4 ||
+      (navigator.hardwareConcurrency ?? 8) <= 4;
+    if (modest) this.ease();
 
     // Name tags are ordinary elements laid over the picture, so their text stays sharp.
     this.labels = document.createElement("div");
@@ -199,15 +233,25 @@ export class MuseumScene {
     host.appendChild(this.labels);
     this.visitorTag = document.createElement("div");
     this.visitorTag.className =
-      "absolute left-0 top-0 whitespace-nowrap bg-carbon/85 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-paper";
+      "absolute left-0 top-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-5 shadow-sm bg-carbon text-lime";
     this.labels.appendChild(this.visitorTag);
 
     // Daylight: a bright sky, and a sun in the north-west so shadows fall towards the viewer.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = LOOK.exposure;
-    this.scene.background = new THREE.Color(SKY);
-    // A little haze over what is far away, so the wood behind the museum falls back.
-    this.scene.fog = new THREE.Fog("#c4e0b4", 158, 270);
+    // Behind the island: warm off-white fading to pale sage, like the card a model stands on.
+    const card = document.createElement("canvas");
+    card.width = 4;
+    card.height = 256;
+    const cardPaint = card.getContext("2d") as CanvasRenderingContext2D;
+    const wash = cardPaint.createLinearGradient(0, 0, 0, 256);
+    wash.addColorStop(0, PALETTE.skyTop);
+    wash.addColorStop(1, PALETTE.skyFoot);
+    cardPaint.fillStyle = wash;
+    cardPaint.fillRect(0, 0, 4, 256);
+    const backdrop = new THREE.CanvasTexture(card);
+    backdrop.colorSpace = THREE.SRGBColorSpace;
+    this.scene.background = backdrop;
     // Something for the brass and the glass to reflect: a plain lit room, blurred. It is made
     // once and costs nothing a frame.
     const reflections = new THREE.PMREMGenerator(this.renderer);
@@ -268,8 +312,8 @@ export class MuseumScene {
 
     this.visitorBody = new THREE.MeshStandardMaterial({ color: "#a6aaa0", roughness: 0.6 });
     // A little taller than everyone else, so the eye finds them.
-    const self = person(this.visitorBody, 1, 1.12);
-    const halo = new THREE.RingGeometry(0.3, 0.38, 32);
+    const self = person(this.visitorBody, 1, LOOK.people * 1.12);
+    const halo = new THREE.RingGeometry(0.3 * LOOK.people, 0.3 * LOOK.people + 0.1, 40);
     halo.rotateX(-Math.PI / 2);
     this.visitorHalo = new THREE.Mesh(halo, new THREE.MeshBasicMaterial({ color: LIME }));
     this.visitorHalo.position.y = 0.03;
@@ -428,6 +472,19 @@ export class MuseumScene {
       );
     };
 
+    // What is not printed yet: a faint body in the brand's green and its edges as dashes.
+    this.prints = [];
+    const blueprint = this.own(
+      new THREE.MeshBasicMaterial({ color: PALETTE.brand, transparent: true, opacity: 0.1, depthWrite: false }),
+    );
+    const blueprintLine = this.own(
+      new THREE.LineDashedMaterial({ color: PALETTE.brand, dashSize: 0.07, gapSize: 0.045, transparent: true, opacity: 0.85 }),
+    );
+    // The line it is printed up to, as a thin bright square.
+    const scanShape = this.keep(new THREE.RingGeometry(0.62, 0.72, 4, 1).rotateX(-Math.PI / 2).rotateY(Math.PI / 4));
+    const scanPaint = this.own(
+      new THREE.MeshBasicMaterial({ color: PALETTE.lime, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }),
+    );
     const seatsLit: THREE.Matrix4[] = [];
     const seatsOpen: THREE.Matrix4[] = [];
     const seatsKept: THREE.Matrix4[] = [];
@@ -462,9 +519,12 @@ export class MuseumScene {
         crowd.push({ x: exhibit.x + Math.cos(angle) * radius, z: exhibit.z + Math.sin(angle) * radius });
       }
 
-      const height = ended ? 0.34 : 0.72;
+      // What ended unmade stands lower, and not all at one height, so a full room is not a grid.
+      const height = ended ? [0.3, 0.46, 0.62][(exhibit.id.charCodeAt(0) + exhibit.id.charCodeAt(1)) % 3] : 0.72;
       place("skirt", skirt, base, exhibit.x, 0.05, exhibit.z, false);
       const plinth = new THREE.Mesh(ended ? plinthLow : plinthTall, ended ? archive : paper);
+      // One shape for the low ones, stretched to each one's height.
+      if (ended) plinth.scale.y = height / 0.34;
       plinth.position.y = height / 2 + 0.1;
       plinth.castShadow = plinth.receiveShadow = true;
       group.add(plinth);
@@ -489,6 +549,8 @@ export class MuseumScene {
       place("plinth-top", plinthTop, base, exhibit.x, height + 0.13, exhibit.z, true);
       const top = height + 0.16;
 
+      // What is part of an exhibit but not something to click on.
+      const plain: THREE.Object3D[] = [];
       // One material per exhibit, so one can light up without the others.
       const material = this.own(standInMaterial(status, exhibit.tint));
       const object = standIn(exhibit.kind, material, (geometry) => this.keep(geometry), ended, exhibit.trim);
@@ -496,11 +558,46 @@ export class MuseumScene {
       object.scale.setScalar(1.25);
       object.userData.material = material;
       object.userData.rest = material.emissiveIntensity;
+      object.userData.base = top;
       object.userData.turns = status === "funding";
+      object.userData.lifts = status !== "funding";
       group.add(object);
+      if (status === "funding") {
+        // It exists as far as its seats are taken: solid below the line, a drawing above it.
+        const tall = 1.08 * 1.25;
+        const solid = new THREE.Plane(new THREE.Vector3(0, -1, 0), top);
+        const drawing = new THREE.Plane(new THREE.Vector3(0, 1, 0), -top);
+        const parts = object.children.filter((child): child is THREE.Mesh => child instanceof THREE.Mesh);
+        parts.forEach((part, index) => {
+          // The fittings are shared by every exhibit; this one needs its own to be cut.
+          if (index > 0) part.material = this.own((part.material as THREE.Material).clone());
+          (part.material as THREE.Material).clippingPlanes = [solid];
+          const ghost = new THREE.Mesh(part.geometry, blueprint);
+          const lines = new THREE.LineSegments(this.keep(new THREE.EdgesGeometry(part.geometry, 28)), blueprintLine);
+          lines.computeLineDistances();
+          object.add(ghost, lines);
+          plain.push(ghost);
+        });
+        blueprint.clippingPlanes = null;
+        const ghostPaint = this.own(blueprint.clone());
+        ghostPaint.clippingPlanes = [drawing];
+        const linePaint = this.own(blueprintLine.clone());
+        linePaint.clippingPlanes = [drawing];
+        object.traverse((child) => {
+          if (child instanceof THREE.LineSegments) child.material = linePaint;
+          else if (child instanceof THREE.Mesh && child.material === blueprint) child.material = ghostPaint;
+        });
+        const scan = new THREE.Mesh(scanShape, scanPaint);
+        scan.position.y = top;
+        group.add(scan);
+        plain.push(scan);
+        const to = exhibit.campaign.backers / Math.max(1, exhibit.campaign.targetBackers);
+        const from = this.printed.get(exhibit.id) ?? 0;
+        this.printed.set(exhibit.id, to);
+        this.prints.push({ id: exhibit.id, solid, drawing, scan, foot: top, tall, from, to, spent: this.calm ? LOOK.printSeconds : 0 });
+      }
       this.objects.set(exhibit.id, object);
 
-      const plain: THREE.Object3D[] = [];
       if (status === "funding") {
         const ring = new THREE.Mesh(halo, limeFlat);
         ring.position.y = 0.075;
@@ -565,7 +662,8 @@ export class MuseumScene {
         "absolute left-0 top-0 hidden w-max max-w-44 border-l-2 border-lime bg-carbon/85 px-2 py-1 text-paper";
       const code = document.createElement("p");
       code.className = "font-mono text-[10px] uppercase tracking-wider text-lime";
-      code.textContent = `${exhibit.code} · ${STATUS_WORDS[status]}`;
+      const filled = Math.round((exhibit.campaign.backers * 100) / Math.max(1, exhibit.campaign.targetBackers));
+      code.textContent = `${exhibit.code} · ${STATUS_WORDS[status]}${status === "funding" ? ` · ${filled}% of seats` : ""}`;
       const title = document.createElement("p");
       title.className = "line-clamp-2 text-xs font-medium leading-4";
       title.textContent = exhibit.campaign.title || "Untitled campaign";
@@ -625,11 +723,31 @@ export class MuseumScene {
       this.exhibitRoot.add(mesh);
     }
     this.renderer.shadowMap.needsUpdate = true;
+    this.print(0);
 
     // What was pointed at may be gone. A visitor standing where a plinth now is steps aside.
     if (this.pointed && !this.places.has(this.pointed)) this.pointed = null;
     if (!canStand(this.visitor.position.x, this.visitor.position.z, this.blocked)) this.stepAside();
     this.light();
+  }
+
+  /**
+   * Moves every exhibit that is printing on by some seconds, and says whether any still is. It
+   * rises quickly and settles, and the bright line rides on top of what is solid.
+   */
+  private print(seconds: number): boolean {
+    let busy = false;
+    for (const print of this.prints) {
+      print.spent = Math.min(LOOK.printSeconds, print.spent + seconds);
+      const along = print.spent / LOOK.printSeconds;
+      const eased = 1 - Math.pow(1 - along, 3);
+      const level = print.foot + print.tall * (print.from + (print.to - print.from) * eased);
+      print.solid.constant = level;
+      print.drawing.constant = -level;
+      print.scan.position.y = level;
+      if (along < 1) busy = true;
+    }
+    return busy;
   }
 
   /** Lights what is pointed at, stood next to or open, and rings it. */
@@ -650,6 +768,7 @@ export class MuseumScene {
       const material = object.userData.material as THREE.MeshStandardMaterial;
       const lit = id === this.hot || id === this.selected;
       material.emissiveIntensity = lit ? 0.6 : (object.userData.rest as number);
+      if (object.userData.lifts) object.position.y = (object.userData.base as number) + (lit ? 0.12 : 0);
     }
   }
 
@@ -723,8 +842,9 @@ export class MuseumScene {
   /** The whole building in view. */
   overview() {
     this.following = false;
-    this.goal.set(4.5, 0, 1);
-    this.zoomGoal = Math.max(this.minZoom(), this.fitZoom() * 0.45);
+    // The middle of the island, from far enough to see its edge and the card it stands on.
+    this.goal.set((ISLAND.minX + ISLAND.maxX) / 2, 0, (ISLAND.minZ + ISLAND.maxZ) / 2);
+    this.zoomGoal = this.minZoom() * 1.04;
   }
 
   /** Where the visitor stands, to tell the others. */
@@ -751,12 +871,12 @@ export class MuseumScene {
         });
         let variant = 0;
         for (const letter of entry.id) variant = (variant * 31 + letter.charCodeAt(0)) % 9973;
-        const figure = person(material, variant);
+        const figure = person(material, variant, LOOK.people);
         figure.position.set(entry.x, 0, entry.z);
         this.scene.add(figure);
         const tag = document.createElement("div");
         tag.className =
-          "absolute left-0 top-0 whitespace-nowrap bg-paper/90 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-carbon";
+          "absolute left-0 top-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-5 shadow-sm border border-carbon/20 bg-paper text-carbon";
         this.labels.appendChild(tag);
         other = { figure, tag, x: entry.x, z: entry.z };
         this.others.set(entry.id, other);
@@ -786,14 +906,14 @@ export class MuseumScene {
       let sum = 0;
       for (const letter of entry.id) sum = (sum * 31 + letter.charCodeAt(0)) % 9973;
       const cloth = new THREE.MeshStandardMaterial({ color: CROWD_SHIRTS[sum % CROWD_SHIRTS.length], roughness: 0.8 });
-      const figure = person(cloth, sum, 0.94);
+      const figure = person(cloth, sum, LOOK.people * 0.94);
       const room = ROOMS[(sum + index) % ROOMS.length];
       const start = this.somewhere(room);
       figure.position.set(start.x, 0, start.z);
       this.scene.add(figure);
       const tag = document.createElement("div");
       tag.className =
-        "absolute left-0 top-0 hidden whitespace-nowrap bg-carbon/55 px-1 py-px font-mono text-[9px] uppercase tracking-wider text-paper/80";
+        "absolute left-0 top-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-5 shadow-sm hidden bg-carbon/60 text-paper/90";
       tag.textContent = entry.name;
       this.labels.appendChild(tag);
       this.wanderers.set(entry.id, { figure, tag, path: [], wait: Math.random() * 2, speed: 1.5 + Math.random() * 0.9, stuck: 0 });
@@ -925,10 +1045,27 @@ export class MuseumScene {
     add(deskAt.id, head, desk);
     this.scene.add(desk);
 
+    // Each room's letter stands over its far corner at any distance; its name joins it when
+    // the view is close enough to read, or when it is the room the visitor is in.
+    for (const room of ROOMS) {
+      const tag = document.createElement("div");
+      tag.className =
+        "absolute left-0 top-0 flex items-center gap-2 whitespace-nowrap rounded-full bg-carbon py-1 pl-1 pr-1 text-paper shadow-md";
+      const letter = document.createElement("span");
+      letter.className = "flex h-7 w-7 items-center justify-center rounded-full bg-lime text-sm font-extrabold text-carbon";
+      letter.textContent = room.code;
+      const name = document.createElement("span");
+      name.className = "pr-2.5 text-sm font-semibold";
+      name.textContent = room.name;
+      tag.append(letter, name);
+      this.labels.appendChild(tag);
+      this.roomTags.push({ room, tag, name });
+    }
+
     for (const station of STATIONS) {
       const tag = document.createElement("div");
       tag.className =
-        "absolute left-0 top-0 hidden whitespace-nowrap border border-carbon bg-lime px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-carbon";
+        "absolute left-0 top-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-5 shadow-sm hidden border border-carbon bg-lime text-carbon";
       tag.textContent = station.label;
       this.labels.appendChild(tag);
       this.stationTags.push(tag);
@@ -981,9 +1118,18 @@ export class MuseumScene {
     this.strain = gap > 1 / 26 ? this.strain + 1 : 0;
     if (this.strain < 45) return;
     this.strain = 0;
+    this.ease();
+  }
+
+  /**
+   * One step down in what is asked of the machine. First: one pixel per pixel and no soft
+   * edges to the picture. Second: no shadows.
+   */
+  private ease() {
     this.eased += 1;
     if (this.eased === 1) {
       this.renderer.setPixelRatio(1);
+      this.host.classList.add("museum-plain");
       this.resize();
     } else {
       this.renderer.shadowMap.enabled = false;
@@ -1138,18 +1284,10 @@ export class MuseumScene {
    */
   private minZoom() {
     const { clientWidth, clientHeight } = this.host;
-    // Seen from this corner the wood is a diamond; this is how far from its middle the
-    // view's own middle can get, measured the same way.
-    const strayed =
-      Math.SQRT2 *
-      Math.max(
-        FOREST.x - BOUNDS.minX,
-        BOUNDS.maxX - FOREST.x,
-        FOREST.z - BOUNDS.minZ,
-        BOUNDS.maxZ - FOREST.z,
-      );
-    const room = FOREST.half * Math.SQRT2 - strayed - 6;
-    return (clientWidth / 2 + clientHeight / 2 / Math.sin(PITCH)) / room;
+    // Seen from this corner the island is a diamond this wide and this deep on screen.
+    const across = (ISLAND.maxX - ISLAND.minX + ISLAND.maxZ - ISLAND.minZ) / Math.SQRT2;
+    const down = across * Math.sin(PITCH);
+    return Math.min(clientWidth / (across + 6), clientHeight / (down + 14));
   }
 
   private resize() {
@@ -1182,6 +1320,7 @@ export class MuseumScene {
       this.path.length > 0 ||
       this.drag !== null ||
       this.astir ||
+      this.printing ||
       this.target.distanceToSquared(this.goal) > 1e-4 ||
       Math.abs(this.zoom - this.zoomGoal) > 0.02;
     // Nothing moved and nothing changed: the picture on screen is still the right one.
@@ -1199,6 +1338,7 @@ export class MuseumScene {
     const seconds = Math.min(0.06, gap);
     this.clock += seconds;
     if (strolling) this.stroll(seconds);
+    this.printing = this.print(seconds);
 
     const walked = this.walk(seconds);
     const position = this.visitor.position;
@@ -1256,6 +1396,8 @@ export class MuseumScene {
     this.renderer.render(this.scene, this.camera);
 
     const readable = this.zoom > 16;
+    // With signposts up, the usual small labels would only be in their way.
+    const quiet = this.marks.length > 0 || this.plotTags.length > 0;
     for (const exhibit of this.hung) {
       const tag = this.tags.get(exhibit.id);
       if (!tag) continue;
@@ -1266,6 +1408,12 @@ export class MuseumScene {
       if (!shown) continue;
       const at = this.project(exhibit.x - 0.75, 0.05, exhibit.z + 0.95);
       tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-100%, 0)`;
+    }
+    for (const { room, tag, name } of this.roomTags) {
+      tag.classList.toggle("hidden", Boolean(this.selected) || quiet);
+      name.classList.toggle("hidden", this.zoom < 24 && room.id !== this.room);
+      const at = this.project(room.x - room.width / 2, FAR_WALL + 1.5, room.z - room.depth / 2);
+      tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     }
     STATIONS.forEach((station, index) => {
       const tag = this.stationTags[index];
@@ -1283,13 +1431,11 @@ export class MuseumScene {
       const at = this.project(mark.x, mark.y, mark.z);
       mark.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     }
-    // With signposts up, the usual small labels would only be in their way.
-    const quiet = this.marks.length > 0 || this.plotTags.length > 0;
     for (const wanderer of this.wanderers.values()) {
       const shown = readable && !this.selected && !quiet;
       wanderer.tag.classList.toggle("hidden", !shown);
       if (!shown) continue;
-      const at = this.project(wanderer.figure.position.x, 1.0, wanderer.figure.position.z);
+      const at = this.project(wanderer.figure.position.x, 0.9 * LOOK.people + 0.15, wanderer.figure.position.z);
       wanderer.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     }
     this.astir = false;
@@ -1301,10 +1447,10 @@ export class MuseumScene {
       figure.x += (other.x - figure.x) * pull;
       figure.z += (other.z - figure.z) * pull;
       figure.y = moving && !this.calm ? Math.abs(Math.sin(this.clock * 11)) * 0.04 : 0;
-      const at = this.project(figure.x, 1.05, figure.z);
+      const at = this.project(figure.x, 0.95 * LOOK.people + 0.15, figure.z);
       other.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     }
-    const above = this.project(position.x, 1.05, position.z);
+    const above = this.project(position.x, 1.06 * LOOK.people + 0.15, position.z);
     this.visitorTag.style.transform = `translate(${Math.round(above.x)}px, ${Math.round(above.y)}px) translate(-50%, -100%)`;
   };
 

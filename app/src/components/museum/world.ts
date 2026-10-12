@@ -9,26 +9,25 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
+import { PALETTE } from "@/components/museum/palette";
 import { CORRIDORS, ENTRANCE, PLOT_SIZE, PLOTS, type Room, type RoomId, ROOMS } from "@/lib/museum/plan";
 
-const GRASS = "#8cc070";
 const PAVING = "#e6dcc6";
-const STONE = "#e0d0b0";
+const STONE = PALETTE.wall;
 const STONE_DARK = "#b9a57f";
 const STONE_CAP = "#f4ead2";
 const WOOD = "#c58f58";
 const WOOD_DARK = "#6b4a32";
-const CARPET = "#b5443b";
+const CARPET = PALETTE.floors.unmade.runner;
 const GOLD = "#d0a52e";
-const HEDGE = "#4f9a45";
+const HEDGE = PALETTE.trees[2];
 const INK = "#4d3f2c";
 const PAPER = "#f0efe7";
 const LIME = "#d8f59a";
 
-export const SKY = GRASS;
 export const FAR_WALL = 2.4;
-/** The wood round the museum: a square of trees this far each way from its middle. */
-export const FOREST = { x: 14, z: 1, half: 96 };
+/** The island the museum stands on: a rectangle of ground with rounded corners. */
+export const ISLAND = { minX: -28, maxX: 59, minZ: -31, maxZ: 33, corner: 10 };
 const NEAR_WALL = 0.95;
 const THICK = 0.5;
 
@@ -159,6 +158,7 @@ export function buildWorld(scene: THREE.Scene) {
   const stone = matte(STONE);
   const stoneDark = matte(STONE_DARK);
   const stoneCap = matte(STONE_CAP, 0.8);
+  const wallTop = matte(PALETTE.wallTop, 0.8);
   const wood = matte(WOOD, 0.7);
   const woodDark = matte(WOOD_DARK, 0.7);
   const hedge = matte(HEDGE, 1);
@@ -193,20 +193,42 @@ export function buildWorld(scene: THREE.Scene) {
   };
 
   // ----- The park -------------------------------------------------------------------------
-  const grass = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2),
-    matte(GRASS, 1),
-  );
-  grass.position.y = -0.5;
-  grass.receiveShadow = true;
-  scene.add(grass);
+  // The museum stands on an island of its own, like a model on a table: grass on top, then
+  // soil, then rock, each a little smaller than the one above.
+  const layer = (inset: number, top: number, thick: number, color: string, catches: boolean) => {
+    const w = ISLAND.maxX - ISLAND.minX - inset * 2;
+    const d = ISLAND.maxZ - ISLAND.minZ - inset * 2;
+    const r = Math.max(2, ISLAND.corner - inset);
+    const outline = new THREE.Shape();
+    outline.moveTo(-w / 2 + r, -d / 2);
+    outline.lineTo(w / 2 - r, -d / 2);
+    outline.quadraticCurveTo(w / 2, -d / 2, w / 2, -d / 2 + r);
+    outline.lineTo(w / 2, d / 2 - r);
+    outline.quadraticCurveTo(w / 2, d / 2, w / 2 - r, d / 2);
+    outline.lineTo(-w / 2 + r, d / 2);
+    outline.quadraticCurveTo(-w / 2, d / 2, -w / 2, d / 2 - r);
+    outline.lineTo(-w / 2, -d / 2 + r);
+    outline.quadraticCurveTo(-w / 2, -d / 2, -w / 2 + r, -d / 2);
+    const mesh = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(outline, { depth: thick, bevelEnabled: true, bevelSize: 0.25, bevelThickness: 0.2, bevelSegments: 2, curveSegments: 10 })
+        .rotateX(-Math.PI / 2)
+        .translate((ISLAND.minX + ISLAND.maxX) / 2, top - thick, (ISLAND.minZ + ISLAND.maxZ) / 2),
+      matte(color, 1),
+    );
+    mesh.receiveShadow = catches;
+    scene.add(mesh);
+  };
+  layer(0, -0.7, 0.9, PALETTE.grass, true);
+  layer(0.7, -1.6, 2.2, PALETTE.soil, false);
+  layer(2.4, -3.8, 2.6, PALETTE.rock, false);
 
   // The square the building stands on, and the path up to its door.
   const square = { minX: -17, maxX: 48.5, minZ: -21, maxZ: 23.5 };
   const squareWidth = square.maxX - square.minX;
   const squareDepth = square.maxZ - square.minZ;
   slab(squareWidth, 0.12, squareDepth, (square.minX + square.maxX) / 2, -0.46, (square.minZ + square.maxZ) / 2, cobbles(squareWidth, squareDepth), false);
-  slab(30, 0.12, 4.4, -32, -0.46, 0, cobbles(30, 4.4), false);
+  const pathLength = square.minX - ISLAND.minX - 1.2;
+  slab(pathLength, 0.12, 4.4, square.minX - pathLength / 2, -0.46, 0, cobbles(pathLength, 4.4), false);
 
   // Lawns in the corners the wings leave free, each with a hedge round it.
   const lawns = [
@@ -216,7 +238,7 @@ export function buildWorld(scene: THREE.Scene) {
     { minX: -15.9, maxX: -9.7, minZ: 3.4, maxZ: 22.4 },
     { minX: -15.9, maxX: -9.7, minZ: -7.5, maxZ: -3.4 },
   ];
-  const lawnGrass = matte("#7fb765", 1);
+  const lawnGrass = matte(PALETTE.lawn, 1);
   for (const lawn of lawns) {
     const width = lawn.maxX - lawn.minX;
     const depth = lawn.maxZ - lawn.minZ;
@@ -234,7 +256,7 @@ export function buildWorld(scene: THREE.Scene) {
   const trees: { x: number; z: number; size: number }[] = [];
   const clear = (x: number, z: number) => trees.every((tree) => Math.hypot(tree.x - x, tree.z - z) > 2.6);
   for (const lawn of lawns) {
-    const count = Math.round(((lawn.maxX - lawn.minX) * (lawn.maxZ - lawn.minZ)) / 26);
+    const count = Math.round(((lawn.maxX - lawn.minX) * (lawn.maxZ - lawn.minZ)) / 40);
     for (let tries = 0; tries < count * 6 && trees.length < 400; tries++) {
       const x = lawn.minX + 1.3 + random() * (lawn.maxX - lawn.minX - 2.6);
       const z = lawn.minZ + 1.3 + random() * (lawn.maxZ - lawn.minZ - 2.6);
@@ -243,19 +265,36 @@ export function buildWorld(scene: THREE.Scene) {
     }
   }
   const near = trees.length;
-  for (let tries = 0; tries < 9000 && trees.length < near + 950; tries++) {
-    const x = FOREST.x + (random() * 2 - 1) * FOREST.half;
-    const z = FOREST.z + (random() * 2 - 1) * FOREST.half;
-    const onSquare = x > square.minX - 2 && x < square.maxX + 2 && z > square.minZ - 2 && z < square.maxZ + 2;
-    const onPath = x < square.minX && Math.abs(z) < 4.2;
-    if (!onSquare && !onPath && clear(x, z)) trees.push({ x, z, size: 1 + random() * 0.9 });
+  // Round the rim of the island they stand in clumps, with gaps between: a frame for the
+  // building, not a wood to get lost in.
+  const onIsland = (x: number, z: number) => {
+    const edge = 2.6;
+    const dx = Math.max(ISLAND.minX + ISLAND.corner - x, 0, x - (ISLAND.maxX - ISLAND.corner));
+    const dz = Math.max(ISLAND.minZ + ISLAND.corner - z, 0, z - (ISLAND.maxZ - ISLAND.corner));
+    return Math.hypot(dx, dz) <= ISLAND.corner - edge;
+  };
+  for (let clump = 0; clump < 26; clump++) {
+    // A point on the band between the square and the edge, by how far round the island it is.
+    const turn = (clump / 26) * Math.PI * 2 + random() * 0.12;
+    const cx = (ISLAND.minX + ISLAND.maxX) / 2 + Math.cos(turn) * ((ISLAND.maxX - ISLAND.minX) / 2 - 4.5);
+    const cz = (ISLAND.minZ + ISLAND.maxZ) / 2 + Math.sin(turn) * ((ISLAND.maxZ - ISLAND.minZ) / 2 - 4.5);
+    const many = 2 + Math.floor(random() * 3);
+    for (let tree = 0, tries = 0; tree < many && tries < 20; tries++) {
+      const x = cx + (random() - 0.5) * 6;
+      const z = cz + (random() - 0.5) * 6;
+      const onSquare = x > square.minX - 1.5 && x < square.maxX + 1.5 && z > square.minZ - 1.5 && z < square.maxZ + 1.5;
+      const onPath = x < square.minX && Math.abs(z) < 4.2;
+      if (onSquare || onPath || !onIsland(x, z) || !clear(x, z)) continue;
+      trees.push({ x, z, size: 0.8 + random() * 0.45 });
+      tree += 1;
+    }
   }
   const trunkShape = new THREE.CylinderGeometry(0.16, 0.22, 1, 6);
   const crownShape = new THREE.IcosahedronGeometry(1, 0);
   const bark = matte("#7a5a3c");
   const foliage = matte("#ffffff", 1);
   const matrix = new THREE.Matrix4();
-  const greens = ["#3f8f4a", "#4c9d4f", "#5aa653", "#367f44"];
+  const greens = PALETTE.trees;
   const plantTrees = (list: typeof trees, casts: boolean) => {
     const trunks = new THREE.InstancedMesh(trunkShape, bark, list.length);
     const crowns = new THREE.InstancedMesh(crownShape, foliage, list.length);
@@ -264,12 +303,16 @@ export function buildWorld(scene: THREE.Scene) {
         (lawn) => tree.x >= lawn.minX && tree.x <= lawn.maxX && tree.z >= lawn.minZ && tree.z <= lawn.maxZ,
       )
         ? -0.31
-        : -0.5;
+        : -0.7;
       const height = 1.3 * tree.size;
       matrix.compose(new THREE.Vector3(tree.x, ground + height / 2, tree.z), new THREE.Quaternion(), new THREE.Vector3(tree.size, height, tree.size));
       trunks.setMatrixAt(index, matrix);
       const radius = 1.3 * tree.size;
-      matrix.compose(new THREE.Vector3(tree.x, ground + height + radius * 0.75, tree.z), new THREE.Quaternion(), new THREE.Vector3(radius, radius * 1.15, radius));
+      matrix.compose(
+        new THREE.Vector3(tree.x, ground + height + radius * 0.75, tree.z),
+        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), index * 1.7),
+        new THREE.Vector3(radius, radius * 1.15, radius),
+      );
       crowns.setMatrixAt(index, matrix);
       crowns.setColorAt(index, new THREE.Color(greens[index % greens.length]));
     });
@@ -308,7 +351,7 @@ export function buildWorld(scene: THREE.Scene) {
     };
     place(THICK, height, height / 2, stone);
     place(THICK + 0.14, 0.34, 0.17, stoneDark, 0.02, false);
-    place(THICK + 0.18, 0.12, height + 0.06, stoneCap, 0.1, false);
+    place(THICK + 0.2, 0.16, height + 0.08, wallTop, 0.1, false);
   };
 
   const wall = (room: Room, side: "n" | "s" | "e" | "w", height: number) => {
@@ -385,11 +428,11 @@ export function buildWorld(scene: THREE.Scene) {
   };
 
   const floors: Record<RoomId, THREE.Material> = {
-    unmade: planks(16, 12, WOOD),
-    workshop: tiles(11, 10, "#e3e9ec", "#a9bcc8"),
-    realized: tiles(11, 10, "#f3ecdc", "#e3d8c0", 1.1),
-    almost: planks(16, 12, "#96765a"),
-    annex: tiles(22, 20, "#ece6d6", "#d3ccb6", 1.7),
+    unmade: planks(16, 12, PALETTE.floors.unmade.planks),
+    workshop: tiles(11, 10, PALETTE.floors.workshop.light, PALETTE.floors.workshop.dark),
+    realized: planks(11, 10, PALETTE.floors.realized.planks),
+    almost: planks(16, 12, PALETTE.floors.almost.planks),
+    annex: tiles(22, 20, PALETTE.floors.annex.light, PALETTE.floors.annex.dark, 1.7),
   };
 
   for (const room of ROOMS) {
@@ -411,7 +454,7 @@ export function buildWorld(scene: THREE.Scene) {
       const x = room.x + (sx * room.width) / 2;
       const z = room.z + (sz * room.depth) / 2;
       slab(0.86, height, 0.86, x, height / 2, z, stoneDark);
-      slab(1.0, 0.14, 1.0, x, height + 0.07, z, stoneCap, false);
+      slab(1.04, 0.18, 1.04, x, height + 0.09, z, wallTop, false);
     }
 
     // The room's letter on its far wall, in ink.
@@ -426,26 +469,6 @@ export function buildWorld(scene: THREE.Scene) {
     letter.position.set(room.x + room.width / 2 - 1.6, 1.35, room.z - room.depth / 2 + THICK / 2 + 0.05);
     scene.add(letter);
 
-    // Its name on a board over the far corner, turned to face whoever is looking. Up there
-    // nothing can stand in front of it: the view looks down from the opposite corner.
-    const board = new THREE.Group();
-    const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.6, 1.15),
-      new THREE.MeshBasicMaterial({
-        map: lettering(1024, 256, "#171917", [
-          { text: room.code, size: 170, weight: 700, color: LIME, x: 36, y: 186 },
-          { text: room.name.toUpperCase(), size: 74, weight: 600, color: PAPER, x: 190, y: 156 },
-        ]),
-      }),
-    );
-    face.position.y = 1.5;
-    const back = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.35, 0.12), woodDark);
-    back.position.set(0, 1.5, -0.07);
-    back.castShadow = true;
-    board.add(back, face);
-    board.position.set(room.x - room.width / 2, FAR_WALL - 0.05, room.z - room.depth / 2);
-    board.rotation.y = Math.PI / 4;
-    scene.add(board);
 
     // Hedges along the outside of the low walls, except where a door leads out through one.
     const doorSouth = CORRIDORS.some(
@@ -568,15 +591,15 @@ export function buildWorld(scene: THREE.Scene) {
   const workshop = ROOMS[1];
   const shopWest = workshop.x - workshop.width / 2;
   slab(0.6, 0.9, 2.6, shopWest + 0.6, 0.45, workshop.z + 3.3, wood);
-  slab(0.55, 1.6, 1.3, shopWest + 0.58, 0.8, workshop.z - 3.7, matte("#3d6f9e", 0.6));
-  for (const [dz, color] of [[2.6, "#e56b9b"], [3.3, "#f7b801"], [4.0, "#2ec4b6"]] as const) {
+  slab(0.55, 1.6, 1.3, shopWest + 0.58, 0.8, workshop.z - 3.7, matte(PALETTE.brand, 0.6));
+  for (const [dz, color] of [[2.6, PALETTE.brandSoft], [3.3, PALETTE.brass], [4.0, PALETTE.paper]] as const) {
     slab(0.32, 0.26, 0.4, shopWest + 0.6, 1.03, workshop.z + dz, matte(color, 0.6));
   }
   for (const [dx, dz, size] of [[3.4, -4.2, 0.7], [4.3, -4.25, 0.5], [3.8, -4.2, 0.45]] as const) {
     slab(size, size, size, workshop.x + dx, size / 2, workshop.z + dz, wood);
   }
   // A painted line round the working floor: mind your step.
-  const paint = new THREE.MeshBasicMaterial({ color: "#ff6338" });
+  const paint = new THREE.MeshBasicMaterial({ color: PALETTE.brand });
   const inner = { w: workshop.width - 3.2, d: workshop.depth - 2.6 };
   laid(inner.w, 0.09, workshop.x + 0.4, workshop.z - inner.d / 2, paint);
   laid(inner.w, 0.09, workshop.x + 0.4, workshop.z + inner.d / 2, paint);
@@ -585,7 +608,8 @@ export function buildWorld(scene: THREE.Scene) {
   bench(workshop.x, workshop.z + workshop.depth / 2 - 0.55, true);
 
   const realized = ROOMS[2];
-  runner(realized.width - 1.8, realized.depth - 2.4, realized.x, realized.z, matte("#2f5d8a", 1));
+  // A runner down the middle, so the warm floor of what was made shows either side of it.
+  runner(2.4, realized.depth - 1.6, realized.x, realized.z, matte(PALETTE.floors.realized.runner, 1));
   // Brass posts and a rope across the far end, the way finished things are kept.
   for (const dx of [-4.4, -2.2, 0, 2.2, 4.4]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.9, 10), gold);
@@ -597,8 +621,8 @@ export function buildWorld(scene: THREE.Scene) {
   bench(realized.x + realized.width / 2 - 0.55, realized.z, false);
 
   const almost = ROOMS[3];
-  runner(almost.width - 1.2, 1.9, almost.x, almost.z - 1.7, matte("#4d7a66", 1));
-  runner(almost.width - 1.2, 1.9, almost.x, almost.z + 1.7, matte("#4d7a66", 1));
+  runner(almost.width - 1.2, 1.9, almost.x, almost.z - 1.7, matte(PALETTE.floors.almost.runner, 1));
+  runner(almost.width - 1.2, 1.9, almost.x, almost.z + 1.7, matte(PALETTE.floors.almost.runner, 1));
   const back = almost.z - almost.depth / 2 + 0.62;
   for (const dx of [-5.6, -1.9, 1.9, 5.6]) {
     slab(2.8, 1.3, 0.5, almost.x + dx, 0.65, back, woodDark);
@@ -651,19 +675,19 @@ export function buildWorld(scene: THREE.Scene) {
   // ----- Dressing -------------------------------------------------------------------------
   // Bunting along the top of the tall walls, on the side that faces into each room. It skips
   // the gateways.
-  const flags = ["#e4572e", "#ffc914", "#17bebb", "#f4f1de", "#9b5de5"].map((color) => matte(color, 0.8));
+  const flags = [PALETTE.brand, PALETTE.lime, PALETTE.paper].map((color) => matte(color, 0.8));
   for (const room of ROOMS) {
     const north = room.z - room.depth / 2;
     const west = room.x - room.width / 2;
     let flag = 0;
-    for (let x = west + 0.95; x < room.x + room.width / 2 - 0.6; x += 0.5) {
+    for (let x = west + 0.95; x < room.x + room.width / 2 - 0.6; x += 0.85) {
       const gate = CORRIDORS.some(
         (corridor) => corridor.along === "z" && Math.abs(corridor.x - x) < corridor.width / 2 + 0.3 && Math.abs(corridor.z - north) < corridor.depth / 2 + 0.1,
       );
       if (!gate) slab(0.3, 0.32 - (flag % 2) * 0.1, 0.03, x, FAR_WALL - 0.2, north + THICK / 2 + 0.03, flags[flag % flags.length], false);
       flag += 1;
     }
-    for (let z = north + 0.95; z < room.z + room.depth / 2 - 0.6; z += 0.5) {
+    for (let z = north + 0.95; z < room.z + room.depth / 2 - 0.6; z += 0.85) {
       const gate = CORRIDORS.some(
         (corridor) => corridor.along === "x" && Math.abs(corridor.z - z) < corridor.depth / 2 + 0.3 && Math.abs(corridor.x - west) < corridor.width / 2 + 0.1,
       );
@@ -673,10 +697,10 @@ export function buildWorld(scene: THREE.Scene) {
   }
 
   // Flowers on the lawns, in clumps between the trees. One mesh for all of them.
-  const petals = ["#ff8cc6", "#ffd23f", "#ffffff", "#ff6b6b", "#b388ff"];
+  const petals = ["#ffffff", "#ffe08a", PALETTE.lime];
   const blooms: { x: number; z: number; size: number; color: string }[] = [];
   for (const lawn of lawns) {
-    const clumps = Math.round(((lawn.maxX - lawn.minX) * (lawn.maxZ - lawn.minZ)) / 11);
+    const clumps = Math.round(((lawn.maxX - lawn.minX) * (lawn.maxZ - lawn.minZ)) / 30);
     for (let clump = 0; clump < clumps; clump++) {
       const cx = lawn.minX + 0.9 + random() * (lawn.maxX - lawn.minX - 1.8);
       const cz = lawn.minZ + 0.9 + random() * (lawn.maxZ - lawn.minZ - 1.8);

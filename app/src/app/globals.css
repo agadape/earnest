@@ -386,3 +386,8 @@ dialog::backdrop {
   mask-image: linear-gradient(to top, #000, transparent);
   -webkit-mask-image: linear-gradient(to top, #000, transparent);
 }
+
+/* On a machine that asked for less, the picture's edges stay sharp: blurring them is work. */
+.museum-plain ~ .museum-soft {
+  display: none;
+}
