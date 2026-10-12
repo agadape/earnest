@@ -59,6 +59,8 @@ export class MuseumScene {
   private frame = 0;
   private dirty = true;
   private room: RoomId = "unmade";
+  // True while the camera travels to a room that was asked for by name.
+  private travelling = false;
 
   // Everything that belongs to the exhibits and is thrown away when they change.
   private readonly exhibitRoot = new THREE.Group();
@@ -527,6 +529,13 @@ export class MuseumScene {
     if (!room) return;
     this.goal.set(room.x, 0, room.z);
     this.zoomGoal = this.fitZoom(room);
+    // Said at once rather than when the camera arrives: the page should not wait on frames.
+    this.travelling = true;
+    if (this.room !== id) {
+      this.room = id;
+      this.handlers.onRoom(id);
+      if (!this.selected) this.moveVisitor();
+    }
     this.dirty = true;
   }
 
@@ -557,6 +566,7 @@ export class MuseumScene {
 
   /** Moves the view by a distance on screen, in pixels. */
   panBy(dx: number, dy: number) {
+    this.travelling = false;
     this.goal
       .addScaledVector(SCREEN_RIGHT, -dx / this.zoom)
       .addScaledVector(SCREEN_UP, dy / this.zoom / Math.sin(PITCH));
@@ -637,6 +647,7 @@ export class MuseumScene {
         }
       }
     }
+    if (!moving) this.travelling = false;
     if (!this.dirty) return;
     this.dirty = false;
 
@@ -655,7 +666,7 @@ export class MuseumScene {
     this.camera.updateProjectionMatrix();
     this.renderer.render(this.scene, this.camera);
 
-    const over = this.roomAt(this.target);
+    const over = this.travelling ? this.room : this.roomAt(this.target);
     if (over !== this.room) {
       this.room = over;
       this.handlers.onRoom(over);
