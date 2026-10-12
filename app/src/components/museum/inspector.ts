@@ -82,7 +82,7 @@ export class Inspector {
     context.fillStyle = fade;
     context.fillRect(0, 0, 128, 128);
     const glow = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 6).rotateX(-Math.PI / 2),
+      new THREE.PlaneGeometry(3.4, 3.4).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({
         map: new THREE.CanvasTexture(pool),
         transparent: true,
