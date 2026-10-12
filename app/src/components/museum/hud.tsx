@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useCreatorCampaigns } from "@/components/creator-record";
 import { Frame } from "@/components/museum/chamber";
 import type { Inspector } from "@/components/museum/inspector";
+import { Token } from "@/components/museum/token";
 import type { Shelf } from "@/components/museum/shelf";
 import { NewCampaignForm } from "@/components/new-campaign-form";
 import { formatDuration, shortAddress, usd } from "@/lib/format";
@@ -15,8 +16,11 @@ import { KINDS, type Look, LOOK_TINTS, LOOK_TRIMS, lookOf, PLOTS, ROOM_FLOORS, S
 import { buildEnd, type Campaign, type Status, statusAt } from "@/lib/tanda-jadi";
 import { useSend } from "@/lib/transactions";
 
-/** A window over the museum floor: dimmed floor behind, a framed panel in front, Esc to leave. */
-function Overlay({
+/**
+ * A room of the museum that takes the whole window: its stone wall and wooden floor, a sign with
+ * its name at the top, and a way back. The board and the curator's desk are both one of these.
+ */
+function Room({
   label,
   title,
   kicker,
@@ -32,52 +36,77 @@ function Overlay({
   return (
     <section
       aria-label={label}
-      className="absolute inset-0 z-20 flex items-stretch justify-center bg-carbon/80 p-3 backdrop-blur-[2px] sm:p-6"
+      className="gallery-ground absolute inset-0 z-20 flex flex-col overflow-y-auto text-toy-ink lg:overflow-hidden"
     >
-      <Frame className="h-full w-full max-w-6xl">
-        <div className="flex h-full flex-col text-paper">
-          <header className="flex shrink-0 items-start justify-between gap-4 border-b border-paper/15 px-5 py-4">
-            <div className="min-w-0">
-              <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">{kicker}</p>
-              <h1 className="mt-0.5 font-mono text-xl font-semibold text-lime sm:text-2xl">{title}</h1>
-            </div>
-            <button type="button" onClick={onClose} className="hud-button shrink-0">
-              Back <span className="hidden font-mono text-[10px] opacity-60 sm:inline">esc</span>
-            </button>
-          </header>
-          {children}
+      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="toy-card min-w-0 max-w-full px-5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-toy-ink/60">{kicker}</p>
+          <h1 className="mt-0.5 text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl">{title}</h1>
         </div>
-      </Frame>
+        <button type="button" onClick={onClose} className="toy-button">
+          ← Back <span className="hidden text-[10px] font-bold opacity-50 sm:inline">esc</span>
+        </button>
+      </header>
+      {children}
     </section>
   );
 }
 
-/** One campaign as a card to press: its state, its name, and the one line that matters now. */
-function Card({
+// The colour of the ribbon over a campaign's note, by the state it is in: the colours of the
+// cards that stand beside exhibits on the floor.
+const RIBBONS: Record<Status, string> = {
+  funding: "bg-lime",
+  building: "bg-[#ffcf5c]",
+  completed: "bg-white",
+  failed: "bg-[#cfc7b4]",
+  braked: "bg-signal",
+};
+// Notes are pinned by hand, so no two hang quite straight.
+const TILTS = ["-rotate-1", "rotate-[0.6deg]", "rotate-0", "rotate-1", "-rotate-[0.5deg]"];
+
+/**
+ * One campaign as a note pinned to the board: a drawing of its object, its state on a ribbon,
+ * its name, and the one line that matters now. It straightens and lifts when pointed at.
+ */
+function Note({
   campaign,
   now,
+  look,
+  hang,
   onOpen,
 }: {
   campaign: Campaign;
   now: number;
+  look: Look;
+  /** Which way it hangs: any whole number. */
+  hang: number;
   onOpen: (address: string) => void;
 }) {
   const status = statusAt(campaign, now);
+  const ended = status === "failed" || status === "braked";
   return (
     <button
       type="button"
       onClick={() => onOpen(campaign.address.toBase58())}
-      className="block h-full w-full border border-paper/20 bg-paper/[0.03] p-3 text-left hover:border-lime hover:bg-lime/10 focus-visible:border-lime focus-visible:outline-none"
+      className={`toy-card group relative block h-full w-full overflow-hidden text-left transition-transform duration-150 hover:z-10 hover:-translate-y-1.5 hover:rotate-0 focus-visible:z-10 focus-visible:-translate-y-1.5 focus-visible:rotate-0 focus-visible:outline-none ${TILTS[hang % TILTS.length]}`}
     >
-      <span className="font-mono text-[10px] uppercase tracking-widest text-lime">{STATUS_WORDS[status]}</span>
-      <span className="mt-1 block text-sm font-semibold leading-5">{campaign.title || "Untitled campaign"}</span>
-      <span className="mt-2 block font-mono text-xs text-paper/65">
-        {campaign.backers}/{campaign.targetBackers} seats · {usd(campaign.price)} ·{" "}
-        {status === "funding"
-          ? `${formatDuration(campaign.deadline - now)} left`
-          : status === "building"
-            ? `${formatDuration(buildEnd(campaign) - now)} of building left`
-            : `by ${shortAddress(campaign.creator)}`}
+      <span aria-hidden className="absolute left-1/2 top-1 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-toy-ink bg-signal" />
+      <span className={`block border-b-2 border-toy-ink px-4 pb-1.5 pt-2.5 text-[11px] font-extrabold uppercase tracking-wide ${RIBBONS[status]}`}>
+        {STATUS_WORDS[status]}
+      </span>
+      <span className="flex items-start gap-3 px-3 py-3">
+        <Token look={look} ended={ended} className="h-12 w-12 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:-rotate-6" />
+        <span className="min-w-0">
+          <span className="block text-sm font-extrabold leading-snug">{campaign.title || "Untitled campaign"}</span>
+          <span className="mt-1 block text-xs font-bold text-toy-ink/60">
+            {campaign.backers}/{campaign.targetBackers} seats · {usd(campaign.price)} ·{" "}
+            {status === "funding"
+              ? `${formatDuration(campaign.deadline - now)} left`
+              : status === "building"
+                ? `${formatDuration(buildEnd(campaign) - now)} of building left`
+                : `by ${shortAddress(campaign.creator)}`}
+          </span>
+        </span>
       </span>
     </button>
   );
@@ -94,16 +123,19 @@ const FILTERS: { key: "all" | Status; label: string }[] = [
 
 /**
  * The campaign board by the door: every campaign there is, including the ones the rooms have no
- * floor for, to search and to open. It is the museum's index.
+ * floor for, each a note pinned to a cork board, to search and to open. It is the museum's index.
  */
 export function Board({
   campaigns,
   now,
+  looks,
   onOpen,
   onClose,
 }: {
   campaigns: Campaign[];
   now: number;
+  /** The looks creators chose for their objects, by campaign address. */
+  looks: ReadonlyMap<string, Look>;
   onOpen: (address: string) => void;
   onClose: () => void;
 }) {
@@ -121,8 +153,8 @@ export function Board({
   );
 
   return (
-    <Overlay label="Campaign board" kicker="By the door · every campaign" title="Campaign board" onClose={onClose}>
-      <div className="shrink-0 space-y-3 px-5 py-4">
+    <Room label="Campaign board" kicker="By the door · every idea in the museum" title="Campaign board" onClose={onClose}>
+      <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 pt-4 sm:px-6">
         <input
           type="search"
           autoFocus
@@ -130,23 +162,19 @@ export function Board({
           onChange={(event) => setQuery(event.target.value)}
           aria-label="Search the board"
           placeholder="Search by title, or by the start of an address"
-          className="block h-11 w-full border border-paper/30 bg-carbon px-3 font-mono text-sm text-paper placeholder:text-paper/40 focus:border-lime focus:outline-none"
+          className="toy-card h-11 min-w-0 flex-1 basis-64 px-4 text-sm font-semibold text-toy-ink placeholder:font-medium placeholder:text-toy-ink/40 focus:outline-none focus-visible:bg-white"
         />
-        <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
+        <div role="group" aria-label="Show" className="flex flex-wrap gap-2">
           {FILTERS.map(({ key, label }) => (
             <button
               key={key}
               type="button"
               aria-pressed={filter === key}
               onClick={() => setFilter(key)}
-              className={`flex h-8 items-center gap-2 border px-3 font-mono text-xs uppercase tracking-wider ${
-                filter === key
-                  ? "border-lime bg-lime text-carbon"
-                  : "border-paper/30 text-paper hover:border-lime"
-              }`}
+              className={`toy-button toy-button-chip h-9 gap-1.5 text-xs ${filter === key ? "toy-button-on" : ""}`}
             >
               {label}
-              <span className="opacity-70">
+              <span className="opacity-60">
                 {key === "all"
                   ? campaigns.length
                   : campaigns.filter((campaign) => statusAt(campaign, now) === key).length}
@@ -155,19 +183,28 @@ export function Board({
           ))}
         </div>
       </div>
-      <ol className="thin-scroll grid min-h-0 flex-1 content-start gap-2 overflow-y-auto px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3">
-        {found.map((campaign) => (
-          <li key={campaign.address.toBase58()}>
-            <Card campaign={campaign} now={now} onOpen={onOpen} />
-          </li>
-        ))}
-        {found.length === 0 && (
-          <li className="px-1 py-6 font-mono text-sm text-paper/60 sm:col-span-2 lg:col-span-3">
-            Nothing on the board matches that.
-          </li>
-        )}
-      </ol>
-    </Overlay>
+      {/* The board itself: cork in a wooden frame, hung on the wall. */}
+      <div className="cork-board thin-scroll mx-4 mb-5 mt-4 min-h-64 flex-1 sm:mx-6 lg:min-h-0 lg:overflow-y-auto">
+        <ol className="grid content-start gap-x-4 gap-y-5 p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {found.map((campaign, index) => (
+            <li key={campaign.address.toBase58()}>
+              <Note
+                campaign={campaign}
+                now={now}
+                look={looks.get(campaign.address.toBase58()) ?? lookOf(campaign)}
+                hang={index}
+                onOpen={onOpen}
+              />
+            </li>
+          ))}
+          {found.length === 0 && (
+            <li className="toy-card px-4 py-4 text-sm font-bold sm:col-span-2 lg:col-span-3 xl:col-span-4">
+              Nothing on the board matches that.
+            </li>
+          )}
+        </ol>
+      </div>
+    </Room>
   );
 }
 
@@ -256,13 +293,6 @@ export function CreatorRecord({
   const word = (text: string) => (
     <p className="toy-card mx-auto mt-10 w-max max-w-[90%] px-5 py-4 text-sm font-bold">{text}</p>
   );
-  const ribbon: Record<Status, string> = {
-    funding: "bg-lime",
-    building: "bg-[#ffcf5c]",
-    completed: "bg-white",
-    failed: "bg-[#cfc7b4]",
-    braked: "bg-signal",
-  };
 
   return (
     <section
@@ -323,7 +353,7 @@ export function CreatorRecord({
                         onBlur={() => shelf.current?.mark(-1)}
                         className="toy-card block h-full w-full overflow-hidden text-left transition-transform hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:outline-none"
                       >
-                        <span className={`block border-b-2 border-toy-ink px-4 py-1.5 text-xs font-extrabold uppercase tracking-wide ${ribbon[status]}`}>
+                        <span className={`block border-b-2 border-toy-ink px-4 py-1.5 text-xs font-extrabold uppercase tracking-wide ${RIBBONS[status]}`}>
                           {STATUS_WORDS[status]}
                         </span>
                         <span className="block px-4 py-3">
@@ -513,24 +543,26 @@ export function DesignMode({
   // What the creator picked themselves; whatever they left alone follows the title.
   const [picked, setPicked] = useState<Partial<Look>>({});
   const look: Look = { ...lookOf({ title }), ...picked };
-  const chip = (on: boolean) =>
-    `border px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${on ? "border-lime bg-lime text-carbon" : "border-paper/30 text-paper hover:border-lime"}`;
+  const chip = (on: boolean) => `toy-button toy-button-chip h-8 text-[11px] uppercase ${on ? "toy-button-on" : ""}`;
 
   return (
-    <Overlay label="Design mode" kicker="At the curator's desk · design mode" title="Put a new exhibit on the floor" onClose={onClose}>
-      <div className="thin-scroll flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
-        <div className="flex shrink-0 flex-col border-b border-paper/15 lg:w-80 lg:border-b-0 lg:border-r">
-          <div className="h-56 lg:h-72">
+    <Room label="Design mode" kicker="At the curator's desk · design mode" title="Put a new exhibit on the floor" onClose={onClose}>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-5 pt-2 sm:px-6 lg:flex-row lg:overflow-hidden">
+        <div className="flex shrink-0 flex-col lg:w-[22rem]">
+          {/* The object as it will stand, turning in the light of the room. */}
+          <div className="h-56 shrink-0 lg:h-[34vh]">
             <Turntable {...look} />
           </div>
-          <div className="space-y-3 px-5 pb-5">
-            <p className="font-mono text-[11px] uppercase tracking-widest text-lime">On the plinth</p>
-            <p className="font-mono text-sm leading-6 text-paper">
-              {title.trim() || "Give it a title and it takes shape."}
-            </p>
+          <div className="toy-card thin-scroll space-y-3 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">On the plinth</p>
+              <p className="text-base font-extrabold leading-snug">
+                {title.trim() || "Give it a title and it takes shape."}
+              </p>
+            </div>
             <div role="group" aria-label="Shape">
-              <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Shape</p>
-              <div className="mt-1 flex flex-wrap gap-1">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">Shape</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
                 {KINDS.map((kind) => (
                   <button
                     key={kind}
@@ -545,8 +577,8 @@ export function DesignMode({
               </div>
             </div>
             <div role="group" aria-label="Colour">
-              <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Colour</p>
-              <div className="mt-1 flex flex-wrap gap-1">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">Colour</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
                 {LOOK_TINTS.map((color, tint) => (
                   <button
                     key={color}
@@ -555,14 +587,14 @@ export function DesignMode({
                     aria-pressed={look.tint === tint}
                     onClick={() => setPicked((current) => ({ ...current, tint }))}
                     style={{ backgroundColor: color }}
-                    className={`h-6 w-6 border-2 ${look.tint === tint ? "border-paper" : "border-transparent"}`}
+                    className={`h-7 w-7 rounded-md border-2 border-toy-ink transition-transform ${look.tint === tint ? "scale-110 shadow-[0_3px_0_var(--color-carbon)]" : "opacity-80"}`}
                   />
                 ))}
               </div>
             </div>
             <div role="group" aria-label="Fittings">
-              <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Fittings</p>
-              <div className="mt-1 flex flex-wrap gap-1">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-toy-ink/60">Fittings</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
                 {LOOK_TRIMS.map((name, trim) => (
                   <button
                     key={name}
@@ -576,22 +608,18 @@ export function DesignMode({
                 ))}
               </div>
             </div>
-            <p className="text-xs leading-5 text-paper/60">
-              Campaigns carry no pictures, so this object stands for yours. It goes to the Unmade
-              Hall the moment the campaign opens, with a seat in front of it for every backer you
-              ask for. Its look is written down in the same transaction.
-            </p>
-            <p className="border-l-2 border-lime pl-3 text-xs leading-5 text-paper/80">
-              <span className="font-mono uppercase tracking-wider text-lime">Curator:</span> Tell me
-              what you would build, how many seats it needs, and what you put on the line if they
-              stay empty. Nothing can be changed once it is on the floor.
+            <p className="rounded-lg border-2 border-toy-ink/15 bg-[#e6e3d5] px-3 py-2 text-xs font-medium leading-5">
+              <span className="font-extrabold uppercase tracking-wide">Curator:</span> Tell me what you would
+              build, how many seats it needs, and what you put on the line if they stay empty. Campaigns
+              carry no pictures, so this object stands for yours; its look is written down in the same
+              transaction. Nothing can be changed once it is on the floor.
             </p>
           </div>
         </div>
-        <div className="chamber chamber-form thin-scroll min-h-0 flex-1 px-5 py-5 lg:overflow-y-auto">
+        <div className="toy-card thin-scroll min-h-0 flex-1 bg-paper px-5 py-5 lg:overflow-y-auto">
           <NewCampaignForm onOpened={(address) => onOpened(address, look)} onTitle={setTitle} look={look} />
         </div>
       </div>
-    </Overlay>
+    </Room>
   );
 }

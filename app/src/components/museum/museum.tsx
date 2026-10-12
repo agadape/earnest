@@ -976,7 +976,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         />
       )}
       {panel === "board" && campaigns && now !== null && (
-        <Board campaigns={campaigns} now={now} onOpen={(address) => select(address)} onClose={() => select(null)} />
+        <Board campaigns={campaigns} now={now} looks={looks} onOpen={(address) => select(address)} onClose={() => select(null)} />
       )}
       {panel === "design" && (
         <DesignMode

@@ -141,7 +141,9 @@ Rooms follow the campaign's own state and nothing else:
   plinth of stone, paint, wood and brass, and cards with thick outlines and buttons that go
   down when pressed (`.toy-card`, `.toy-button` in `globals.css`). A creator's file is the same
   kind of room: the creator as a figure beside a shelf of everything they put in the museum
-  (`shelf.ts`). The board, the desk and build mode still wear the dark frame. The stand-in objects are small
+  (`shelf.ts`). The board is a cork board of pinned notes, each with a flat drawing of its object
+  (`token.tsx`), and the desk is a room with the object turning in it. Only the build mode
+  panel, which sits over the floor, still wears the dark frame. The stand-in objects are small
   models now, a coloured body with pale parts and brass fittings, welded so each costs three
   draws (`objects.ts`). They were looked at in the close view; on the floor only in passing.
 - **A creator chooses what their object looks like.** At the curator's desk: one of eight
