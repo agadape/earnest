@@ -176,6 +176,8 @@ export function Museum() {
     // The room's name and its list sit over the left of the floor on a wide window.
     scene.current?.setInsets(window.matchMedia(WIDE).matches ? 340 : 0, 0, 0);
     scene.current?.setSelected(selected);
+    // The chamber covers the whole floor; there is no point drawing what cannot be seen.
+    scene.current?.setPaused(selected !== null);
     // Depends on the signature too: an open exhibit that changes rooms is followed there.
   }, [sceneId, selected, signature]);
 
@@ -201,7 +203,8 @@ export function Museum() {
     let stopped = false;
     const beat = async () => {
       const at = scene.current?.whereabouts();
-      if (!at) return;
+      // A tab nobody is looking at stops reporting, and so drops out of the museum for the others.
+      if (!at || document.hidden) return;
       try {
         const response = await fetch("/api/presence", {
           method: "POST",

@@ -7,6 +7,7 @@
  * place.
  */
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { canStand, CORRIDORS, ENTRANCE, type Room, type RoomId, ROOMS } from "@/lib/museum/plan";
 
@@ -162,6 +163,18 @@ export function buildWorld(scene: THREE.Scene) {
   const gold = new THREE.MeshStandardMaterial({ color: GOLD, roughness: 0.35, metalness: 0.6 });
   const glass = new THREE.MeshStandardMaterial({ color: "#6f93a8", roughness: 0.2, metalness: 0.3 });
 
+  // Nothing built here ever moves, so everything of one material is welded into one mesh.
+  // The building is a few hundred boxes; drawn one by one they cost a few hundred draws, twice
+  // over when shadows are on. Welded, they cost a dozen.
+  const welds = new Map<THREE.Material, { casting: THREE.BufferGeometry[]; flat: THREE.BufferGeometry[] }>();
+  const weld = (geometry: THREE.BufferGeometry, material: THREE.Material, casts: boolean) => {
+    let entry = welds.get(material);
+    if (!entry) {
+      entry = { casting: [], flat: [] };
+      welds.set(material, entry);
+    }
+    (casts ? entry.casting : entry.flat).push(geometry.index ? geometry.toNonIndexed() : geometry);
+  };
   const slab = (
     width: number,
     height: number,
@@ -171,21 +184,10 @@ export function buildWorld(scene: THREE.Scene) {
     z: number,
     material: THREE.Material,
     casts = true,
-  ) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = casts;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    return mesh;
-  };
+  ) => weld(new THREE.BoxGeometry(width, height, depth).translate(x, y, z), material, casts);
   /** Something flat laid on a floor: a carpet, a painted line. */
   const laid = (width: number, depth: number, x: number, z: number, material: THREE.Material, y = 0.006) => {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth).rotateX(-Math.PI / 2), material);
-    mesh.position.set(x, y, z);
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    return mesh;
+    weld(new THREE.PlaneGeometry(width, depth).rotateX(-Math.PI / 2).translate(x, y, z), material, false);
   };
 
   // ----- The park -------------------------------------------------------------------------
@@ -238,37 +240,45 @@ export function buildWorld(scene: THREE.Scene) {
       if (trees.filter((tree) => tree.x >= lawn.minX && tree.x <= lawn.maxX && tree.z >= lawn.minZ && tree.z <= lawn.maxZ).length >= count) break;
     }
   }
-  for (let tries = 0; tries < 900; tries++) {
+  const near = trees.length;
+  for (let tries = 0; tries < 900 && trees.length < near + 110; tries++) {
     const x = -48 + random() * 100;
     const z = -48 + random() * 100;
     const onSquare = x > square.minX - 2 && x < square.maxX + 2 && z > square.minZ - 2 && z < square.maxZ + 2;
     const onPath = x < square.minX && Math.abs(z) < 4.2;
     if (!onSquare && !onPath && clear(x, z)) trees.push({ x, z, size: 1 + random() * 0.9 });
   }
-  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.22, 1, 7), matte("#7a5a3c"), trees.length);
-  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), matte("#ffffff", 1), trees.length);
-  const upper = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), matte("#ffffff", 1), trees.length);
+  const trunkShape = new THREE.CylinderGeometry(0.16, 0.22, 1, 6);
+  const crownShape = new THREE.IcosahedronGeometry(1, 1);
+  const bark = matte("#7a5a3c");
+  const foliage = matte("#ffffff", 1);
   const matrix = new THREE.Matrix4();
   const greens = ["#3f8f4a", "#4c9d4f", "#5aa653", "#367f44"];
-  trees.forEach((tree, index) => {
-    const ground = lawns.some((lawn) => tree.x >= lawn.minX && tree.x <= lawn.maxX && tree.z >= lawn.minZ && tree.z <= lawn.maxZ) ? -0.31 : -0.5;
-    const height = 1.3 * tree.size;
-    matrix.compose(new THREE.Vector3(tree.x, ground + height / 2, tree.z), new THREE.Quaternion(), new THREE.Vector3(tree.size, height, tree.size));
-    trunks.setMatrixAt(index, matrix);
-    const radius = 1.25 * tree.size;
-    matrix.compose(new THREE.Vector3(tree.x, ground + height + radius * 0.6, tree.z), new THREE.Quaternion(), new THREE.Vector3(radius, radius * 0.95, radius));
-    crowns.setMatrixAt(index, matrix);
-    matrix.compose(new THREE.Vector3(tree.x + 0.15, ground + height + radius * 1.35, tree.z - 0.1), new THREE.Quaternion(), new THREE.Vector3(radius * 0.68, radius * 0.7, radius * 0.68));
-    upper.setMatrixAt(index, matrix);
-    const green = new THREE.Color(greens[index % greens.length]);
-    crowns.setColorAt(index, green);
-    upper.setColorAt(index, green.clone().offsetHSL(0, 0, 0.05));
-  });
-  for (const mesh of [trunks, crowns, upper]) {
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-  }
+  const plantTrees = (list: typeof trees, casts: boolean) => {
+    const trunks = new THREE.InstancedMesh(trunkShape, bark, list.length);
+    const crowns = new THREE.InstancedMesh(crownShape, foliage, list.length);
+    list.forEach((tree, index) => {
+      const ground = lawns.some(
+        (lawn) => tree.x >= lawn.minX && tree.x <= lawn.maxX && tree.z >= lawn.minZ && tree.z <= lawn.maxZ,
+      )
+        ? -0.31
+        : -0.5;
+      const height = 1.3 * tree.size;
+      matrix.compose(new THREE.Vector3(tree.x, ground + height / 2, tree.z), new THREE.Quaternion(), new THREE.Vector3(tree.size, height, tree.size));
+      trunks.setMatrixAt(index, matrix);
+      const radius = 1.3 * tree.size;
+      matrix.compose(new THREE.Vector3(tree.x, ground + height + radius * 0.75, tree.z), new THREE.Quaternion(), new THREE.Vector3(radius, radius * 1.15, radius));
+      crowns.setMatrixAt(index, matrix);
+      crowns.setColorAt(index, new THREE.Color(greens[index % greens.length]));
+    });
+    for (const mesh of [trunks, crowns]) {
+      mesh.castShadow = casts;
+      mesh.receiveShadow = casts;
+      scene.add(mesh);
+    }
+  };
+  plantTrees(trees.slice(0, near), true);
+  plantTrees(trees.slice(near), false);
 
   // A fountain on the square in front of the door.
   const basin = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.15, 0.5, 40), stone);
@@ -490,8 +500,7 @@ export function buildWorld(scene: THREE.Scene) {
     const tuft = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3 * size, 1), leafLight);
     tuft.position.set(x + 0.12 * size, 1.12 * size, z - 0.08 * size);
     for (const mesh of [pot, bush, tuft]) {
-      mesh.castShadow = true;
-      scene.add(mesh);
+      weld(mesh.geometry.translate(mesh.position.x, mesh.position.y, mesh.position.z), mesh.material as THREE.Material, true);
     }
   };
   const bench = (x: number, z: number, alongX: boolean) => {
@@ -505,10 +514,11 @@ export function buildWorld(scene: THREE.Scene) {
   const lamp = (x: number, z: number, ground = 0) => {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 2.1, 8), woodDark);
     post.position.set(x, ground + 1.05, z);
-    post.castShadow = true;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), lampGlow);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lampGlow);
     head.position.set(x, ground + 2.2, z);
-    scene.add(post, head);
+    for (const mesh of [post, head]) {
+      weld(mesh.geometry.translate(mesh.position.x, mesh.position.y, mesh.position.z), mesh.material as THREE.Material, false);
+    }
   };
 
   for (const room of ROOMS) {
@@ -586,6 +596,20 @@ export function buildWorld(scene: THREE.Scene) {
     shrub.position.set(ENTRANCE.x - 1.2, 0.72, dz);
     shrub.castShadow = true;
     scene.add(tub, shrub);
+  }
+
+  for (const [material, entry] of welds) {
+    for (const [geometries, casts] of [
+      [entry.casting, true],
+      [entry.flat, false],
+    ] as const) {
+      if (geometries.length === 0) continue;
+      const mesh = new THREE.Mesh(mergeGeometries(geometries), material);
+      mesh.castShadow = casts;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      for (const geometry of geometries) geometry.dispose();
+    }
   }
 }
 

@@ -105,6 +105,14 @@ export class MuseumScene {
   private readonly held = new Set<Direction>();
   private following = false;
   private stuck = 0;
+  // Whether anything is happening that deserves every frame. When nothing is, the museum is
+  // drawn twenty times a second, which is plenty for people strolling in the distance.
+  private lively = true;
+  private paused = false;
+  private tick = 0;
+  // Frames in a row that took too long while something was happening.
+  private strain = 0;
+  private eased = 0;
   private readonly strollers: Strollers;
 
   // Space the page's own panels cover, so what is looked at is centred in what is left.
@@ -121,9 +129,13 @@ export class MuseumScene {
   ) {
     // Throws where WebGL is not available; the page shows the catalog instead.
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // A sharp screen has four pixels where an ordinary one has one; drawing all of them is
+    // most of what makes this heavy, and at this distance one and a half is hard to tell from two.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // Shadows are redrawn a few times a second, not every frame: almost nothing that casts one moves.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.domElement.style.display = "block";
     this.renderer.domElement.style.touchAction = "none";
     host.appendChild(this.renderer.domElement);
@@ -147,10 +159,10 @@ export class MuseumScene {
     sun.position.set(-16, 26, -9);
     sun.target.position.set(5, 0, 2);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.bias = -0.0004;
     sun.shadow.radius = 3;
-    Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 110 });
+    Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 1, far: 90 });
     this.scene.add(sun, sun.target);
 
     buildWorld(this.scene);
@@ -301,6 +313,31 @@ export class MuseumScene {
     const halo = this.keep(new THREE.RingGeometry(1.2, 1.27, 56).rotateX(-Math.PI / 2));
     const light = this.keep(new THREE.PlaneGeometry(5.2, 5.2).rotateX(-Math.PI / 2));
 
+    // What every exhibit has the same of is drawn once for all of them, not once each.
+    const many = new Map<
+      string,
+      { geometry: THREE.BufferGeometry; material: THREE.Material; matrices: THREE.Matrix4[]; casts: boolean }
+    >();
+    const place = (
+      key: string,
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material,
+      x: number,
+      y: number,
+      z: number,
+      casts: boolean,
+      stretch = 1,
+    ) => {
+      let batch = many.get(key);
+      if (!batch) {
+        batch = { geometry, material, matrices: [], casts };
+        many.set(key, batch);
+      }
+      batch.matrices.push(
+        new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(1, 1, stretch)),
+      );
+    };
+
     const seatsLit: THREE.Matrix4[] = [];
     const seatsOpen: THREE.Matrix4[] = [];
     const seatsKept: THREE.Matrix4[] = [];
@@ -312,43 +349,30 @@ export class MuseumScene {
       group.position.set(exhibit.x, 0, exhibit.z);
       this.places.set(exhibit.id, group.position.clone());
 
-      const glowOnFloor = new THREE.Mesh(light, ended ? dim : bright);
-      glowOnFloor.position.y = 0.008;
-      group.add(glowOnFloor);
+      place(ended ? "pool-dim" : "pool", light, ended ? dim : bright, exhibit.x, 0.008, exhibit.z, false);
 
       const height = ended ? 0.34 : 0.72;
-      const foot = new THREE.Mesh(skirt, base);
-      foot.position.y = 0.05;
-      foot.receiveShadow = true;
+      place("skirt", skirt, base, exhibit.x, 0.05, exhibit.z, false);
       const plinth = new THREE.Mesh(ended ? plinthLow : plinthTall, ended ? archive : paper);
       plinth.position.y = height / 2 + 0.1;
       plinth.castShadow = plinth.receiveShadow = true;
-      group.add(foot, plinth);
+      group.add(plinth);
 
       // Brass posts and a rope round three sides; the front is open, where the seats are.
       for (const [dx, dz] of [[-1.05, -1.05], [1.05, -1.05], [-1.05, 0.72], [1.05, 0.72]]) {
-        const mesh = new THREE.Mesh(stanchion, brass);
-        mesh.position.set(dx, 0.31, dz);
-        mesh.castShadow = true;
-        group.add(mesh);
+        place("stanchion", stanchion, brass, exhibit.x + dx, 0.31, exhibit.z + dz, true);
       }
-      const far = new THREE.Mesh(cord, rope);
-      far.position.set(0, 0.52, -1.05);
-      group.add(far);
+      place("cord", cord, rope, exhibit.x, 0.52, exhibit.z - 1.05, false);
       for (const dx of [-1.05, 1.05]) {
-        const side = new THREE.Mesh(cordAcross, rope);
-        side.scale.z = 1.77 / 2.1;
-        side.position.set(dx, 0.52, -0.165);
-        group.add(side);
+        place("cord-side", cordAcross, rope, exhibit.x + dx, 0.52, exhibit.z - 0.165, false, 1.77 / 2.1);
       }
       // A stand with a card on it; the card's colour says which state the campaign is in.
-      const standLeg = new THREE.Mesh(standPost, base);
-      standLeg.position.set(-1.25, 0.31, 1.2);
+      place("stand", standPost, base, exhibit.x - 1.25, 0.31, exhibit.z + 1.2, false);
       const card = new THREE.Mesh(standBoard, boards[status]);
       card.position.set(-1.25, 0.72, 1.2);
       card.rotation.set(-0.5, Math.PI / 4, 0, "YXZ");
       card.castShadow = true;
-      group.add(standLeg, card);
+      group.add(card);
       const top = height + 0.1;
 
       // One material per exhibit, so one can light up without the others.
@@ -363,7 +387,7 @@ export class MuseumScene {
       group.add(object);
       this.objects.set(exhibit.id, object);
 
-      const plain: THREE.Object3D[] = [glowOnFloor];
+      const plain: THREE.Object3D[] = [];
       if (status === "funding") {
         const ring = new THREE.Mesh(halo, limeFlat);
         ring.position.y = 0.02;
@@ -373,15 +397,10 @@ export class MuseumScene {
       if (status === "building") {
         // Scaffolding: it is being worked on.
         for (const [dx, dz] of [[-0.72, -0.72], [0.72, -0.72], [-0.72, 0.72], [0.72, 0.72]]) {
-          const mesh = new THREE.Mesh(post, dark);
-          mesh.position.set(dx, 0.85, dz);
-          mesh.castShadow = true;
-          group.add(mesh);
+          place("scaffold-post", post, dark, exhibit.x + dx, 0.85, exhibit.z + dz, true);
         }
         for (const [dz, y] of [[-0.72, 1.7], [0.72, 1.7], [-0.72, 0.95], [0.72, 0.95]]) {
-          const mesh = new THREE.Mesh(beam, dark);
-          mesh.position.set(0, y, dz);
-          group.add(mesh);
+          place("scaffold-beam", beam, dark, exhibit.x, y, exhibit.z + dz, false);
         }
       }
       if (status === "completed") {
@@ -465,6 +484,16 @@ export class MuseumScene {
       mesh.castShadow = true;
       this.exhibitRoot.add(mesh);
     }
+
+    for (const batch of many.values()) {
+      const mesh = new THREE.InstancedMesh(batch.geometry, batch.material, batch.matrices.length);
+      batch.matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.castShadow = batch.casts;
+      mesh.receiveShadow = true;
+      this.exhibitRoot.add(mesh);
+    }
+    this.renderer.shadowMap.needsUpdate = true;
 
     // What was pointed at may be gone. A visitor standing where a plinth now is steps aside.
     if (this.pointed && !this.places.has(this.pointed)) this.pointed = null;
@@ -656,6 +685,33 @@ export class MuseumScene {
     }
   }
 
+  /** Stops drawing while something else covers the whole floor, and starts again after. */
+  setPaused(paused: boolean) {
+    this.paused = paused;
+    this.lively = true;
+  }
+
+  /**
+   * Notices a machine that cannot keep up and asks less of it: first fewer pixels, then no
+   * shadows. It only ever steps down, so the picture does not flicker between settings.
+   */
+  private unburden(gap: number) {
+    if (!this.lively || this.eased >= 2) return;
+    this.strain = gap > 1 / 26 ? this.strain + 1 : 0;
+    if (this.strain < 45) return;
+    this.strain = 0;
+    this.eased += 1;
+    if (this.eased === 1) {
+      this.renderer.setPixelRatio(1);
+      this.resize();
+    } else {
+      this.renderer.shadowMap.enabled = false;
+      this.scene.traverse((child) => {
+        if (child instanceof THREE.Mesh) (child.material as THREE.Material).needsUpdate = true;
+      });
+    }
+  }
+
   /** Who is walking: a connected wallet, by its short address, or a guest who has none. */
   setVisitor(wallet: string | null) {
     this.visitorBody.color.set(wallet ? PAPER : "#a6aaa0");
@@ -807,8 +863,15 @@ export class MuseumScene {
   private readonly loop = (time: number) => {
     this.frame = requestAnimationFrame(this.loop);
     // A tab that was in the background comes back with one very long frame; do not leap.
-    const seconds = Math.min(0.05, Math.max(0, (time - this.last) / 1000));
+    if (this.paused) {
+      this.last = time;
+      return;
+    }
+    const gap = Math.max(0, (time - this.last) / 1000);
+    if (!this.lively && gap < 1 / 20) return;
+    const seconds = Math.min(0.06, gap);
     this.last = time;
+    this.unburden(gap);
     this.clock += seconds;
     this.strollers.step(seconds, this.clock, this.blocked);
 
@@ -872,7 +935,16 @@ export class MuseumScene {
     this.camera.lookAt(centre);
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
+    this.tick += 1;
+    if (this.tick % 4 === 0) this.renderer.shadowMap.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
+    this.lively =
+      walked ||
+      this.held.size > 0 ||
+      this.path.length > 0 ||
+      this.drag !== null ||
+      this.target.distanceToSquared(this.goal) > 1e-4 ||
+      Math.abs(this.zoom - this.zoomGoal) > 0.02;
 
     const readable = this.zoom > 16;
     for (const exhibit of this.hung) {
