@@ -628,6 +628,21 @@ export class MuseumScene {
     this.say(id);
   }
 
+  /**
+   * Turns the camera to a room, or to the whole building, and leaves the visitor where they
+   * are. For showing someone round without walking them anywhere.
+   */
+  lookAt(id: RoomId | null) {
+    const room = id ? ROOMS.find((candidate) => candidate.id === id) : undefined;
+    if (!room) {
+      this.overview();
+      return;
+    }
+    this.following = false;
+    this.goal.set(room.x, 0, room.z);
+    this.zoomGoal = this.fitZoom(room) * 0.82;
+  }
+
   /** The whole building in view. */
   overview() {
     this.following = false;

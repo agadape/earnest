@@ -185,3 +185,19 @@ dialog::backdrop {
 .chamber label {
   color: var(--color-paper);
 }
+
+/* A line of the introduction arrives the way a subtitle does. */
+.cutscene-line {
+  animation: cutscene-line 0.5s ease-out both;
+}
+@keyframes cutscene-line {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cutscene-line {
+    animation: none;
+  }
+}

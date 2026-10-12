@@ -9,7 +9,7 @@ import { CampaignView } from "@/components/campaign-view";
 import { Chamber } from "@/components/museum/chamber";
 import { Board, CreatorRecord, DesignMode, PlotPicker } from "@/components/museum/hud";
 import type { Direction, MuseumScene } from "@/components/museum/scene";
-import { TOUR, Tour } from "@/components/museum/tour";
+import { Cutscene, SCENES } from "@/components/museum/cutscene";
 import { useNotes } from "@/components/museum/use-notes";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
@@ -21,6 +21,8 @@ const WIDE = "(min-width: 1024px)";
 type Panel = "board" | "design" | "record";
 // What `select` is given to open a creator's file: this, then the wallet's address.
 const CREATOR = "@creator:";
+// Set in this browser once the introduction has played, so it plays once.
+const INTRO_SEEN = "earnest:intro-seen";
 const PANEL_OF: Record<string, Panel> = { "@board": "board", "@desk": "design" };
 
 /** One line under an exhibit's name: what state it is in, in words, and how full it is. */
@@ -112,8 +114,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const [panel, setPanel] = useState<Panel | null>(null);
   const [creator, setCreator] = useState<string | null>(null);
   const [untouched, setUntouched] = useState(true);
-  // The guided tour: which stop it is at, or `null` when nobody is being shown round.
-  const [tour, setTour] = useState<number | null>(null);
+  // The introduction: which scene it is at, or `null` when it is not playing.
+  const [intro, setIntro] = useState<number | null>(null);
   // Build mode: the campaign whose creator is choosing a plot, and the plot picked so far.
   const [placing, setPlacing] = useState<string | null>(null);
   const [chosen, setChosen] = useState<number | null>(null);
@@ -250,12 +252,12 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   useEffect(() => {
     if (!sceneId) return;
     // The room's name and its list sit over the left of the floor on a wide window.
-    scene.current?.setInsets(window.matchMedia(WIDE).matches ? 340 : 0, 0, 0);
+    scene.current?.setInsets(intro === null && window.matchMedia(WIDE).matches ? 340 : 0, 0, 0);
     scene.current?.setSelected(selected);
     // The chamber covers the whole floor; there is no point drawing what cannot be seen.
     scene.current?.setPaused(selected !== null);
     // Depends on the signature too: an open exhibit that changes rooms is followed there.
-  }, [sceneId, selected, signature]);
+  }, [sceneId, selected, signature, intro]);
 
   useEffect(() => {
     if (sceneId) scene.current?.setVisitor(publicKey ? shortAddress(publicKey) : null);
@@ -346,37 +348,41 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     );
   }, [sceneId, strollerKey]);
 
-  // Each stop of the tour is about a room; the view and the visitor go there.
+  // Each scene of the introduction looks at a room. Only the camera goes; the visitor stays.
   useEffect(() => {
-    if (!sceneId || tour === null) return;
-    const stop = TOUR[tour];
-    if (stop?.room) scene.current?.focusRoom(stop.room);
-    else if (stop?.wide) scene.current?.overview();
-  }, [sceneId, tour]);
+    if (!sceneId || intro === null) return;
+    scene.current?.lookAt(SCENES[intro]?.room ?? null);
+  }, [sceneId, intro]);
 
-  // Three stops wait for the visitor to do something, and go on by themselves once it is done.
-  const task = tour !== null ? TOUR[tour]?.task : undefined;
+  // The introduction plays by itself the first time a wallet connects in this browser.
+  const connected = publicKey !== null;
   useEffect(() => {
-    if (tour === null || !task) return;
-    const next = () => setTour((at) => (at === tour ? tour + 1 : at));
-    if (task === "walk") {
-      const from = scene.current?.whereabouts();
-      const watch = setInterval(() => {
-        const now = scene.current?.whereabouts();
-        if (from && now && Math.hypot(now.x - from.x, now.z - from.z) > 1.5) next();
-      }, 250);
-      return () => clearInterval(watch);
+    if (!connected || !sceneId) return;
+    let seen = true;
+    try {
+      seen = window.localStorage.getItem(INTRO_SEEN) !== null;
+      window.localStorage.setItem(INTRO_SEEN, "1");
+    } catch {
+      // Without storage there is no telling a first visit from a tenth; do not replay it forever.
     }
-    // Opened: the chamber is up. Closed: it is gone again.
-    if ((task === "open") === (selected !== null)) {
-      const timer = setTimeout(next, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [tour, task, selected]);
+    // Someone who came by a link to an exhibit or a panel came for that, not for a film.
+    if (seen || window.location.pathname !== "/" || window.location.search !== "") return;
+    const timer = setTimeout(() => {
+      setAtDoor(false);
+      setIntro(0);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [connected, sceneId]);
+
+  /** Ends the introduction: the view goes back to the visitor, wherever they stand. */
+  const endIntro = useCallback(() => {
+    setIntro(null);
+    scene.current?.focusRoom("unmade");
+  }, []);
 
   // Walking is done with the keyboard anywhere on the page, except while something is being
   // typed or a control has the keys: a button's own Enter and a text box's letters come first.
-  const covered = selected !== null || panel !== null || atDoor;
+  const covered = selected !== null || panel !== null || atDoor || intro !== null;
   useEffect(() => {
     const KEYS: Record<string, Direction> = {
       w: "up",
@@ -398,6 +404,17 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       );
     };
     const onDown = (event: KeyboardEvent) => {
+      // While the introduction plays, the keys only turn its pages.
+      if (intro !== null) {
+        if (event.key === "Escape") endIntro();
+        // A button that has the keys answers to the space bar itself.
+        else if (event.target instanceof HTMLButtonElement && event.key === " ") return;
+        else if (event.key === " " || event.key === "ArrowRight") {
+          event.preventDefault();
+          if (intro < SCENES.length - 1) setIntro(intro + 1);
+        } else if (event.key === "ArrowLeft" && intro > 0) setIntro(intro - 1);
+        return;
+      }
       if (event.key === "Escape") {
         if (placing) setPlacing(null);
         else if (selected || panel) select(null);
@@ -431,7 +448,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [selected, panel, select, near, covered, placing, tour]);
+  }, [selected, panel, select, near, covered, placing, intro, endIntro]);
 
   if (!MINT) {
     return (
@@ -476,6 +493,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   // An exhibit the rooms have no floor for can still be opened, and given a room.
   const open = shown ?? (kept && now !== null ? stored(kept, now, reacted.get(selected ?? "") ?? 0) : undefined);
   const viewer = publicKey?.toBase58();
+  // Something to show at the end of the introduction: an idea that is still taking pledges.
+  const firstIdea = museum?.exhibits.find((exhibit) => exhibit.status === "funding")?.id;
   const mine = viewer ? (campaigns ?? []).filter((campaign) => campaign.creator.toBase58() === viewer) : [];
   const beingPlaced = placing ? campaigns?.find((campaign) => campaign.address.toBase58() === placing) : undefined;
   const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
@@ -496,12 +515,12 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       {/* A shade behind the words on the left, so they never fight the floor for legibility. */}
       <div
         aria-hidden
-        className={`pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem] ${tour !== null ? "invisible" : ""}`}
+        className={`pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-carbon via-carbon/85 to-transparent sm:w-[30rem] ${intro !== null ? "invisible" : ""}`}
       />
       {/* What a building cannot say: where you are, and what hangs here. Put away during
           the tutorial, which wants one thing read and one thing done. */}
       <div
-        className={`pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6 ${tour !== null ? "invisible" : ""}`}
+        className={`pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6 ${intro !== null ? "invisible" : ""}`}
       >
         <div className="pointer-events-auto max-w-sm">
           <p className="font-mono text-xs uppercase tracking-widest text-lime">
@@ -619,10 +638,10 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
               <li>
                 <button
                   type="button"
-                  onClick={() => setTour(0)}
+                  onClick={() => setIntro(0)}
                   className={`${hudButton} border-lime text-lime`}
                 >
-                  Tutorial
+                  Replay intro
                 </button>
               </li>
             </ul>
@@ -721,20 +740,20 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
               <button
                 type="button"
                 autoFocus
-                onClick={() => {
-                  setAtDoor(false);
-                  setTour(0);
-                }}
+                onClick={() => setAtDoor(false)}
                 className="h-11 bg-carbon px-6 text-sm font-medium text-lime hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-carbon"
               >
-                Play the 1-minute tutorial
+                Walk in
               </button>
               <button
                 type="button"
-                onClick={() => setAtDoor(false)}
+                onClick={() => {
+                  setAtDoor(false);
+                  setIntro(0);
+                }}
                 className="flex h-11 items-center border border-stone-400 px-5 text-sm font-medium hover:border-stone-900"
               >
-                Walk in
+                Watch the 1-minute intro
               </button>
               <button
                 type="button"
@@ -796,8 +815,21 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       {panel === "record" && creator && (
         <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
       )}
-      {tour !== null && !panel && !placing && !atDoor && (!selected || task === "close") && (
-        <Tour step={tour} onStep={setTour} onClose={() => setTour(null)} />
+      {intro !== null && !selected && !panel && !placing && (
+        <Cutscene
+          scene={intro}
+          onScene={setIntro}
+          onClose={endIntro}
+          visitor={publicKey ? shortAddress(publicKey) : null}
+          onOpenIdea={
+            firstIdea
+              ? () => {
+                  setIntro(null);
+                  select(firstIdea);
+                }
+              : undefined
+          }
+        />
       )}
       {beingPlaced && !selected && !panel && (
         <PlotPicker

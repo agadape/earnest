@@ -128,13 +128,13 @@ Rooms follow the campaign's own state and nothing else:
   moved: with strollers it is drawn up to 24 times a second, and not at all for someone who
   asked their system for less motion. Their walking was not watched, for the same reason
   the visitor's was not.
-- **There is a tutorial, in the manner of a game's first level.** Asked for by a first reader
-  who did not know where to start. Eight stops in plain words; at three of them the visitor has
-  to do the thing (walk, open an exhibit, close it) and the tutorial goes on by itself when they
-  have, with a way past for anyone who cannot. While it runs the rest of what is laid over the
-  floor is put away. It is offered first on the plaque at the door and again from the directory
-  (`tour.tsx`). Opening and closing were tried in a browser; noticing that the visitor walked
-  was not, since the browser used for checking draws no frames.
+- **An introduction plays the first time a wallet connects.** Six scenes: the camera goes
+  from room to room by itself, black bars above and below, one line of plain words at the foot
+  of the picture. The visitor only goes on to the next line, by a click anywhere or the space
+  bar, and at the end chooses between being shown an idea and walking around (`cutscene.tsx`).
+  It plays once per browser, can be skipped at any moment, is offered on the plaque at the door
+  and can be replayed from the directory. It replaced a tutorial that made the visitor walk and
+  open things before it would go on: that one could get stuck, and its first user said so.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and
