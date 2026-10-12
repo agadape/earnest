@@ -6,7 +6,7 @@
 import * as THREE from "three";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
-import type { Kind } from "@/lib/museum/plan";
+import type { Look } from "@/lib/museum/plan";
 import type { Status } from "@/lib/tanda-jadi";
 
 const LIME = "#d8f59a";
@@ -28,7 +28,7 @@ export class Inspector {
 
   constructor(
     private readonly host: HTMLElement,
-    kind: Kind,
+    look: Look,
     status: Status,
     private readonly calm: boolean,
   ) {
@@ -56,7 +56,7 @@ export class Inspector {
     this.scene.add(rim);
 
     const ended = status === "failed" || status === "braked";
-    const object = standIn(kind, standInMaterial(status, kind), undefined, ended);
+    const object = standIn(look.kind, standInMaterial(status, look.tint), undefined, ended, look.trim);
     object.scale.setScalar(1.3);
     object.position.y = 0.62;
 

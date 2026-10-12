@@ -10,7 +10,7 @@ import { NewCampaignForm } from "@/components/new-campaign-form";
 import { formatDuration, shortAddress, usd } from "@/lib/format";
 import { claimPlotIx, type Plot } from "@/lib/ledger";
 import { describeRecord, recordOf } from "@/lib/record";
-import { type Kind, kindOf, PLOTS, ROOM_FLOORS, STATUS_WORDS } from "@/lib/museum/plan";
+import { KINDS, type Look, LOOK_TINTS, LOOK_TRIMS, lookOf, PLOTS, ROOM_FLOORS, STATUS_WORDS } from "@/lib/museum/plan";
 import { buildEnd, type Campaign, type Status, statusAt } from "@/lib/tanda-jadi";
 import { useSend } from "@/lib/transactions";
 
@@ -395,7 +395,7 @@ export function PlotPicker({
 }
 
 /** One stand-in object on a turntable, for showing what a campaign will look like on the floor. */
-function Turntable({ kind }: { kind: Kind }) {
+function Turntable({ kind, tint, trim }: Look) {
   const stage = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = stage.current;
@@ -405,14 +405,14 @@ function Turntable({ kind }: { kind: Kind }) {
     const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     import("@/components/museum/inspector")
       .then(({ Inspector: Make }) => {
-        if (!cancelled) created = new Make(element, kind, "funding", calm);
+        if (!cancelled) created = new Make(element, { kind, tint, trim }, "funding", calm);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
       created?.dispose();
     };
-  }, [kind]);
+  }, [kind, tint, trim]);
   return <div ref={stage} aria-hidden className="h-full w-full" />;
 }
 
@@ -425,28 +425,81 @@ export function DesignMode({
   onOpened,
   onClose,
 }: {
-  onOpened: (address: string) => void;
+  /** Told the new campaign's address and the look its creator settled on. */
+  onOpened: (address: string, look: Look) => void;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const kind = kindOf({ title });
+  // What the creator picked themselves; whatever they left alone follows the title.
+  const [picked, setPicked] = useState<Partial<Look>>({});
+  const look: Look = { ...lookOf({ title }), ...picked };
+  const chip = (on: boolean) =>
+    `border px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${on ? "border-lime bg-lime text-carbon" : "border-paper/30 text-paper hover:border-lime"}`;
 
   return (
     <Overlay label="Design mode" kicker="At the curator's desk · design mode" title="Put a new exhibit on the floor" onClose={onClose}>
       <div className="thin-scroll flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
         <div className="flex shrink-0 flex-col border-b border-paper/15 lg:w-80 lg:border-b-0 lg:border-r">
           <div className="h-56 lg:h-72">
-            <Turntable kind={kind} />
+            <Turntable {...look} />
           </div>
           <div className="space-y-3 px-5 pb-5">
             <p className="font-mono text-[11px] uppercase tracking-widest text-lime">On the plinth</p>
             <p className="font-mono text-sm leading-6 text-paper">
               {title.trim() || "Give it a title and it takes shape."}
             </p>
+            <div role="group" aria-label="Shape">
+              <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Shape</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {KINDS.map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    aria-pressed={look.kind === kind}
+                    onClick={() => setPicked((current) => ({ ...current, kind }))}
+                    className={chip(look.kind === kind)}
+                  >
+                    {kind}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div role="group" aria-label="Colour">
+              <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Colour</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {LOOK_TINTS.map((color, tint) => (
+                  <button
+                    key={color}
+                    type="button"
+                    aria-label={`Colour ${tint + 1}`}
+                    aria-pressed={look.tint === tint}
+                    onClick={() => setPicked((current) => ({ ...current, tint }))}
+                    style={{ backgroundColor: color }}
+                    className={`h-6 w-6 border-2 ${look.tint === tint ? "border-paper" : "border-transparent"}`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div role="group" aria-label="Fittings">
+              <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Fittings</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {LOOK_TRIMS.map((name, trim) => (
+                  <button
+                    key={name}
+                    type="button"
+                    aria-pressed={look.trim === trim}
+                    onClick={() => setPicked((current) => ({ ...current, trim }))}
+                    className={chip(look.trim === trim)}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
             <p className="text-xs leading-5 text-paper/60">
-              The object is a stand-in picked from the title. It goes to the middle of the Unmade
+              Campaigns carry no pictures, so this object stands for yours. It goes to the Unmade
               Hall the moment the campaign opens, with a seat in front of it for every backer you
-              ask for.
+              ask for. Its look is written down in the same transaction.
             </p>
             <p className="border-l-2 border-lime pl-3 text-xs leading-5 text-paper/80">
               <span className="font-mono uppercase tracking-wider text-lime">Curator:</span> Tell me
@@ -456,7 +509,7 @@ export function DesignMode({
           </div>
         </div>
         <div className="chamber chamber-form thin-scroll min-h-0 flex-1 px-5 py-5 lg:overflow-y-auto">
-          <NewCampaignForm onOpened={onOpened} onTitle={setTitle} />
+          <NewCampaignForm onOpened={(address) => onOpened(address, look)} onTitle={setTitle} look={look} />
         </div>
       </div>
     </Overlay>

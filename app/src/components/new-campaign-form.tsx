@@ -12,6 +12,8 @@ import { useConnectDialog } from "@/components/wallet-button";
 import { useBalance, useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
 import { formatDate, formatDuration, formatPercent, plural, usd } from "@/lib/format";
+import { lookIx } from "@/lib/ledger";
+import type { Look } from "@/lib/museum/plan";
 import {
   bond,
   type Campaign,
@@ -222,9 +224,12 @@ function preview(terms: Terms, feeBps: number, mint: PublicKey): Campaign {
 export function NewCampaignForm({
   onOpened,
   onTitle,
+  look,
 }: {
   onOpened?: (address: string) => void;
   onTitle?: (title: string) => void;
+  /** What the campaign's object should look like. Written down in the same transaction that opens it. */
+  look?: Look;
 } = {}) {
   const router = useRouter();
   const program = useProgram();
@@ -281,7 +286,10 @@ export function NewCampaignForm({
       pending: `Locking ${usd(locked)} and opening your campaign`,
       done: "Your campaign is open.",
       build: async (creator) => [
-        [await createCampaignIx(program, creator, mint, { ...terms, id })],
+        [
+          await createCampaignIx(program, creator, mint, { ...terms, id }),
+          ...(look ? lookIx(creator, campaignAddress(creator, id), look) : []),
+        ],
       ],
     });
     if (!opened) return;

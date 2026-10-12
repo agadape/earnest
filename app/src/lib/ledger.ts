@@ -16,6 +16,7 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 
+import { KINDS, type Look, LOOK_TINTS, LOOK_TRIMS } from "@/lib/museum/plan";
 import { PROGRAM_ID } from "@/lib/tanda-jadi";
 
 const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -47,10 +48,18 @@ export interface PlotClaim {
   style: number;
 }
 
+/** A creator saying what their campaign's object should look like. */
+export interface LookNote extends Look {
+  signature: string;
+  campaign: string;
+}
+
 export interface Notes {
   reactions: Map<string, ReactionCounts>;
   /** Oldest first: the order in which they have to be judged. */
   claims: PlotClaim[];
+  /** Oldest first: the last one that counts is the one that holds. */
+  looks: LookNote[];
 }
 
 /** The instructions that write one note, signed and paid for by `writer`. */
@@ -71,12 +80,16 @@ export const reactIx = (writer: PublicKey, campaign: PublicKey, kind: ReactionKi
 export const claimPlotIx = (writer: PublicKey, campaign: PublicKey, plot: number, style: number) =>
   note(writer, `${PREFIX}:plot:${campaign.toBase58()}:${plot}:${style}`);
 
+export const lookIx = (writer: PublicKey, campaign: PublicKey, look: Look) =>
+  note(writer, `${PREFIX}:look:${campaign.toBase58()}:${look.kind}:${look.tint}:${look.trim}`);
+
 const emptyCounts = (): ReactionCounts => ({ want: 0, clever: 0, watching: 0 });
 
 /** Sorts the lines of text into reactions and plot claims. Anything else is ignored. */
 export function sortNotes(lines: { signature: string; text: string }[]): Notes {
   const reactions = new Map<string, ReactionCounts>();
   const claims: PlotClaim[] = [];
+  const looks: LookNote[] = [];
   for (const { signature, text } of lines) {
     const [brand, version, what, campaign, ...rest] = text.trim().split(":");
     if (`${brand}:${version}` !== PREFIX || !campaign) continue;
@@ -91,9 +104,16 @@ export function sortNotes(lines: { signature: string; text: string }[]): Notes {
       const style = Number(rest[1]);
       if (!Number.isInteger(plot) || !Number.isInteger(style)) continue;
       claims.push({ signature, campaign, plot, style: ((style % ROOM_STYLES) + ROOM_STYLES) % ROOM_STYLES });
+    } else if (what === "look") {
+      const kind = KINDS.find((candidate) => candidate === rest[0]);
+      const tint = Number(rest[1]);
+      const trim = Number(rest[2]);
+      const inRange = (value: number, most: number) => Number.isInteger(value) && value >= 0 && value < most;
+      if (!kind || !inRange(tint, LOOK_TINTS.length) || !inRange(trim, LOOK_TRIMS.length)) continue;
+      looks.push({ signature, campaign, kind, tint, trim });
     }
   }
-  return { reactions, claims };
+  return { reactions, claims, looks };
 }
 
 /** Every note there is, read from the registry's history. The newest few thousand at most. */
@@ -132,6 +152,23 @@ export async function signersOf(connection: Connection, signature: string): Prom
     .map((key) => key.pubkey.toBase58());
   signers.set(signature, found);
   return found;
+}
+
+/**
+ * The look each creator chose for their campaign: the last note about it that its own
+ * creator signed. Anyone else's note about it counts for nothing.
+ */
+export function judgeLooks(
+  looks: LookNote[],
+  creatorOf: (campaign: string) => string | undefined,
+  signedBy: (signature: string) => string[] | undefined,
+): Map<string, Look> {
+  const chosen = new Map<string, Look>();
+  for (const { signature, campaign, kind, tint, trim } of looks) {
+    const creator = creatorOf(campaign);
+    if (creator && signedBy(signature)?.includes(creator)) chosen.set(campaign, { kind, tint, trim });
+  }
+  return chosen;
 }
 
 export interface Plot {

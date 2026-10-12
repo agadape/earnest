@@ -12,8 +12,8 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 
 import type { Campaign } from "@/lib/tanda-jadi";
 
-import { judgeClaims, type PlotClaim, sortNotes } from "./ledger";
-import { arrange, canStand, PLOTS, ROOMS, route } from "./museum/plan";
+import { judgeClaims, judgeLooks, type PlotClaim, sortNotes } from "./ledger";
+import { arrange, canStand, lookOf, PLOTS, ROOMS, route } from "./museum/plan";
 
 const A = "CampaignA";
 const B = "CampaignB";
@@ -139,4 +139,38 @@ test("the annex is reached through the workshop, on floor all the way", () => {
   // From the workshop nobody goes back to the hall first.
   const fromWorkshop = route({ x: 15.5, z: 0 }, to);
   assert.deepEqual(fromWorkshop[0], [19.6, 0]);
+});
+
+test("a look counts only from the campaign's creator, and the last one holds", () => {
+  const { looks } = sortNotes([
+    { signature: "1", text: `earnest:1:look:${A}:orb:3:1` },
+    { signature: "2", text: `earnest:1:look:${A}:tower:9:2` },
+    { signature: "3", text: `earnest:1:look:${A}:ring:0:0` },
+    { signature: "4", text: `earnest:1:look:${B}:spaceship:0:0` },
+    { signature: "5", text: `earnest:1:look:${B}:orb:99:0` },
+  ]);
+  // A shape that does not exist and a colour past the end of the list are not looks at all.
+  assert.equal(looks.length, 3);
+  const chosen = judgeLooks(
+    looks,
+    (id) => creators[id],
+    (signature) => ({ "1": ["alice"], "2": ["alice"], "3": ["mallory"] })[signature],
+  );
+  assert.deepEqual(chosen.get(A), { kind: "tower", tint: 9, trim: 2 });
+  assert.equal(chosen.has(B), false);
+});
+
+test("campaigns with the same title do not all look the same, and one campaign always looks the same", () => {
+  const twins = Array.from({ length: 12 }, () => ({ ...campaign(1), title: "Same title" }));
+  const seen = new Set(twins.map((twin) => { const look = lookOf(twin); return `${look.tint}:${look.trim}`; }));
+  assert.ok(seen.size >= 4, `only ${seen.size} different looks among twelve`);
+  assert.deepEqual(lookOf(twins[0]), lookOf(twins[0]));
+  // The shape still follows the title.
+  assert.equal(new Set(twins.map((twin) => lookOf(twin).kind)).size, 1);
+
+  const hung = arrange([twins[0]], 1_000_000, undefined, undefined, new Map([[twins[0].address.toBase58(), { kind: "knot", tint: 2, trim: 1 }]]));
+  assert.deepEqual(
+    { kind: hung.exhibits[0].kind, tint: hung.exhibits[0].tint, trim: hung.exhibits[0].trim },
+    { kind: "knot", tint: 2, trim: 1 },
+  );
 });

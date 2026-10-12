@@ -14,7 +14,7 @@ import { useNotes } from "@/components/museum/use-notes";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
 import { formatDuration, shortAddress } from "@/lib/format";
-import { arrange, type Exhibit, type RoomId, ROOMS, STATIONS, STATUS_WORDS, stored } from "@/lib/museum/plan";
+import { arrange, type Exhibit, type Look, type RoomId, ROOMS, STATIONS, STATUS_WORDS, stored } from "@/lib/museum/plan";
 import { buildEnd, fetchCampaigns } from "@/lib/tanda-jadi";
 
 const WIDE = "(min-width: 1024px)";
@@ -70,7 +70,14 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const { data: campaigns, error } = usePolled(MINT ? load : null);
 
   // What is written on chain beside the campaigns: reactions, and the rooms creators built.
-  const { reactions, plots, mine: reactedByMe, inDatabase, accept, reload: reloadNotes } = useNotes(campaigns);
+  const { reactions, plots, looks: readLooks, mine: reactedByMe, inDatabase, accept, reload: reloadNotes } = useNotes(campaigns);
+  // A campaign opened a moment ago wears the look its creator just chose, without waiting for
+  // the note about it to be read back from the chain.
+  const [justMade, setJustMade] = useState<Record<string, Look>>({});
+  const looks = useMemo(
+    () => new Map<string, Look>([...Object.entries(justMade), ...readLooks]),
+    [justMade, readLooks],
+  );
   const reacted = useMemo(() => {
     const totals = new Map<string, number>();
     for (const [id, counts] of reactions) totals.set(id, counts.want + counts.clever + counts.watching);
@@ -83,16 +90,16 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   }, [reloadNotes]);
 
   const museum = useMemo(
-    () => (campaigns && now !== null ? arrange(campaigns, now, plots, reacted) : null),
-    [campaigns, now, plots, reacted],
+    () => (campaigns && now !== null ? arrange(campaigns, now, plots, reacted, looks) : null),
+    [campaigns, now, plots, reacted, looks],
   );
   // The clock ticks every second and the chain is asked every two; the building is only
   // rebuilt when something a visitor could see has changed.
   const signature = museum
     ? museum.exhibits
         .map(
-          ({ id, status, x, z, campaign, style, reactions: given }) =>
-            `${id}:${status}:${x}:${z}:${campaign.backers}:${style ?? ""}:${Math.min(given, 10)}`,
+          ({ id, status, x, z, campaign, style, kind, tint, trim, reactions: given }) =>
+            `${id}:${status}:${x}:${z}:${campaign.backers}:${style ?? ""}:${Math.min(given, 10)}:${kind}:${tint}:${trim}`,
         )
         .join("|")
     : null;
@@ -533,7 +540,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const shown = selected ? museum?.exhibits.find((exhibit) => exhibit.id === selected) : undefined;
   const kept = selected && !shown ? campaigns?.find((campaign) => campaign.address.toBase58() === selected) : undefined;
   // An exhibit the rooms have no floor for can still be opened, and given a room.
-  const open = shown ?? (kept && now !== null ? stored(kept, now, reacted.get(selected ?? "") ?? 0) : undefined);
+  const open = shown ?? (kept && now !== null ? stored(kept, now, reacted.get(selected ?? "") ?? 0, looks.get(selected ?? "")) : undefined);
   const viewer = publicKey?.toBase58();
   // Something to show at the end of the introduction: an idea that is still taking pledges.
   const firstIdea = museum?.exhibits.find((exhibit) => exhibit.status === "funding")?.id;
@@ -852,7 +859,15 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         <Board campaigns={campaigns} now={now} onOpen={(address) => select(address)} onClose={() => select(null)} />
       )}
       {panel === "design" && (
-        <DesignMode onOpened={(address) => select(address)} onClose={() => select(null)} />
+        <DesignMode
+          onOpened={(address, look) => {
+            setJustMade((made) => ({ ...made, [address]: look }));
+            select(address);
+            // The look was written down with the campaign; read it back.
+            noted();
+          }}
+          onClose={() => select(null)}
+        />
       )}
       {panel === "record" && creator && (
         <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />

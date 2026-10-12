@@ -142,6 +142,13 @@ Rooms follow the campaign's own state and nothing else:
   creator's file and build mode still wear the dark frame. The stand-in objects are small
   models now, a coloured body with pale parts and brass fittings, welded so each costs three
   draws (`objects.ts`). They were looked at in the close view; on the floor only in passing.
+- **A creator chooses what their object looks like.** At the curator's desk: one of eight
+  shapes, ten colours and three fittings, shown turning as it is chosen. The choice is a memo
+  note written in the same transaction that opens the campaign, so it costs no second
+  signature, and it counts only when the campaign's creator signed it. A campaign without one
+  gets its shape from its title, as before, and its colour and fittings from its address, so
+  campaigns with the same title are no longer twins. A look cannot be changed afterwards from
+  the app. Checked on devnet with one campaign opened from the desk.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and

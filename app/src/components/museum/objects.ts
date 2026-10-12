@@ -9,34 +9,27 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-import type { Kind } from "@/lib/museum/plan";
+import { type Kind, LOOK_TINTS } from "@/lib/museum/plan";
 import type { Status } from "@/lib/tanda-jadi";
 
-/** A colour for each kind of object, so a room of exhibits is not a room of one colour. */
-const TINTS: Record<Kind, string> = {
-  screen: "#3fa7d6",
-  orb: "#f25f5c",
-  tower: "#ffb347",
-  ring: "#9b5de5",
-  arch: "#2ec4b6",
-  prism: "#ff7f50",
-  stack: "#f7b801",
-  knot: "#e56b9b",
-};
-
-// The fittings every object shares. Made once; disposing of them only frees what the graphics
-// card holds, and they are sent again the next time they are drawn.
+// The fittings an object can have: pale parts and, by the creator's choice, brass, silver or
+// dark wood. Made once; disposing of them only frees what the graphics card holds, and they are
+// sent again the next time they are drawn.
 const PALE = new THREE.MeshStandardMaterial({ color: "#fbf3df", roughness: 0.55 });
-const BRASS = new THREE.MeshStandardMaterial({ color: "#d9ab35", roughness: 0.3, metalness: 0.65 });
+const TRIMS = [
+  new THREE.MeshStandardMaterial({ color: "#d9ab35", roughness: 0.3, metalness: 0.65 }),
+  new THREE.MeshStandardMaterial({ color: "#cfd6dc", roughness: 0.25, metalness: 0.8 }),
+  new THREE.MeshStandardMaterial({ color: "#5a3a26", roughness: 0.6 }),
+];
 const PALE_ENDED = new THREE.MeshStandardMaterial({ color: "#cfc9bb", roughness: 0.9 });
-const BRASS_ENDED = new THREE.MeshStandardMaterial({ color: "#8f8a7c", roughness: 0.8, metalness: 0.2 });
+const TRIM_ENDED = new THREE.MeshStandardMaterial({ color: "#8f8a7c", roughness: 0.8, metalness: 0.2 });
 
 /**
- * What an exhibit's object is made of. Its colour comes from its kind; a campaign that ended
- * unmade loses the colour, and one still looking for backers glows a little.
+ * What an exhibit's body is made of. Its colour is the one its look names; a campaign that
+ * ended unmade loses the colour, and one still looking for backers glows a little.
  */
-export function standInMaterial(status: Status, kind: Kind): THREE.MeshStandardMaterial {
-  const tint = TINTS[kind];
+export function standInMaterial(status: Status, tintIndex: number): THREE.MeshStandardMaterial {
+  const tint = LOOK_TINTS[tintIndex % LOOK_TINTS.length];
   switch (status) {
     case "funding":
       return new THREE.MeshStandardMaterial({ color: tint, roughness: 0.35, emissive: tint, emissiveIntensity: 0.22 });
@@ -129,13 +122,15 @@ export function standIn(
   keep: <T extends THREE.BufferGeometry>(geometry: T) => T = (geometry) => geometry,
   /** Whether the campaign ended unmade: its fittings lose their shine along with its colour. */
   ended = false,
+  /** Which fittings it has: a number into the list of trims. */
+  trim = 0,
 ): THREE.Group {
   const group = new THREE.Group();
   const { body, pale, brass } = parts(kind);
   const layers: [Part[], THREE.Material][] = [
     [body, material],
     [pale, ended ? PALE_ENDED : PALE],
-    [brass, ended ? BRASS_ENDED : BRASS],
+    [brass, ended ? TRIM_ENDED : TRIMS[trim % TRIMS.length]],
   ];
   for (const [pieces, made] of layers) {
     // Welded shapes have to agree on whether they share corners; these do not all.

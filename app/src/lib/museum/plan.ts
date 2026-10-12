@@ -155,6 +155,42 @@ export function kindOf(campaign: { title: string; address?: { toBytes(): Uint8Ar
   return others[sum % others.length];
 }
 
+/** The colours an object's body can have, by number. */
+export const LOOK_TINTS = [
+  "#3fa7d6",
+  "#f25f5c",
+  "#ffb347",
+  "#9b5de5",
+  "#2ec4b6",
+  "#ff7f50",
+  "#f7b801",
+  "#e56b9b",
+  "#6bbf59",
+  "#5c7cfa",
+];
+/** What an object's fittings can be made of, by number. */
+export const LOOK_TRIMS = ["Brass", "Silver", "Dark wood"] as const;
+
+/** What a campaign's object looks like: its shape, the colour of its body, its fittings. */
+export interface Look {
+  kind: Kind;
+  tint: number;
+  trim: number;
+}
+
+/**
+ * The look a campaign has when its creator chose none. The shape comes from the title, as
+ * before; the colour and the fittings come from the address, so that two campaigns with
+ * the same title do not stand side by side as twins. Without an address, while a campaign
+ * is still being written, they come from the title too.
+ */
+export function lookOf(campaign: { title: string; address?: { toBytes(): Uint8Array } }): Look {
+  const bytes = campaign.address?.toBytes() ?? new TextEncoder().encode(campaign.title.trim().toLowerCase());
+  let sum = 11;
+  for (const byte of bytes) sum = (sum * 33 + byte) % 99991;
+  return { kind: kindOf(campaign), tint: sum % LOOK_TINTS.length, trim: Math.floor(sum / 13) % LOOK_TRIMS.length };
+}
+
 export interface Exhibit {
   /** The campaign's address as text. */
   id: string;
@@ -166,6 +202,9 @@ export interface Exhibit {
   x: number;
   z: number;
   kind: Kind;
+  /** The colour of its body and what its fittings are made of, as numbers into the two lists. */
+  tint: number;
+  trim: number;
   /** The annex plot its creator built on, and the floor they chose. Missing in the four rooms. */
   plot?: number;
   style?: number;
@@ -189,6 +228,8 @@ export function arrange(
   /** By campaign address: the plot each creator built on, and the reactions each was given. */
   plots: ReadonlyMap<string, { plot: number; style: number }> = new Map(),
   reactions: ReadonlyMap<string, number> = new Map(),
+  /** By campaign address: the look each creator chose. The rest get the one worked out for them. */
+  looks: ReadonlyMap<string, Look> = new Map(),
 ): Museum {
   const counts: Record<RoomId, number> = { unmade: 0, workshop: 0, realized: 0, almost: 0, annex: 0 };
   const taken: Record<RoomId, number> = { unmade: 0, workshop: 0, realized: 0, almost: 0, annex: 0 };
@@ -199,7 +240,7 @@ export function arrange(
   for (const campaign of newestFirst) {
     const status = statusAt(campaign, now);
     const id = campaign.address.toBase58();
-    const shared = { id, campaign, status, kind: kindOf(campaign), reactions: reactions.get(id) ?? 0 };
+    const shared = { id, campaign, status, ...(looks.get(id) ?? lookOf(campaign)), reactions: reactions.get(id) ?? 0 };
     // A room its creator built comes before the room its state would put it in.
     const built = plots.get(id);
     const plot = built ? PLOTS[built.plot] : undefined;
@@ -236,7 +277,7 @@ export function arrange(
  * A campaign the rooms have no floor for, described the way an exhibit is, so it can still
  * be opened and looked at. It stands nowhere.
  */
-export function stored(campaign: Campaign, now: number, reactions: number): Exhibit {
+export function stored(campaign: Campaign, now: number, reactions: number, look?: Look): Exhibit {
   const status = statusAt(campaign, now);
   return {
     id: campaign.address.toBase58(),
@@ -246,7 +287,7 @@ export function stored(campaign: Campaign, now: number, reactions: number): Exhi
     room: ROOM_OF[status],
     x: 0,
     z: 0,
-    kind: kindOf(campaign),
+    ...(look ?? lookOf(campaign)),
     reactions,
   };
 }

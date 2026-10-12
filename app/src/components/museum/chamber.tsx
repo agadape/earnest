@@ -146,18 +146,20 @@ export function Chamber({
   const stage = useRef<HTMLDivElement>(null);
   const inspector = useRef<Inspector | null>(null);
   const kind = exhibit?.kind;
+  const tint = exhibit?.tint;
+  const trim = exhibit?.trim;
   const status = exhibit?.status;
 
   useEffect(() => {
     const element = stage.current;
-    if (!element || !kind || !status) return;
+    if (!element || !kind || !status || tint === undefined || trim === undefined) return;
     let cancelled = false;
     let created: Inspector | null = null;
     const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     import("@/components/museum/inspector")
       .then(({ Inspector: Make }) => {
         if (cancelled) return;
-        created = new Make(element, kind, status, calm);
+        created = new Make(element, { kind, tint, trim }, status, calm);
         inspector.current = created;
       })
       // Without 3D the chamber still has every word and every button; only the object is missing.
@@ -167,7 +169,7 @@ export function Chamber({
       created?.dispose();
       inspector.current = null;
     };
-  }, [kind, status]);
+  }, [kind, tint, trim, status]);
 
   const campaign = exhibit?.campaign;
   const date = exhibit && now !== null ? when(exhibit, now) : null;

@@ -3,8 +3,8 @@
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { judgeClaims, type Notes, type Plot, type ReactionCounts, readNotes, signersOf } from "@/lib/ledger";
-import { PLOTS } from "@/lib/museum/plan";
+import { judgeClaims, judgeLooks, type Notes, type Plot, type ReactionCounts, readNotes, signersOf } from "@/lib/ledger";
+import { type Look, PLOTS } from "@/lib/museum/plan";
 import type { ReactionsAnswer } from "@/lib/reactions";
 import type { Campaign } from "@/lib/tanda-jadi";
 
@@ -14,6 +14,7 @@ const EVERY_MS = 12_000;
 const REACTIONS_EVERY_MS = 5_000;
 const NOTHING_MINE: ReadonlySet<string> = new Set();
 const NO_PLOTS: ReadonlyMap<string, Plot> = new Map();
+const NO_LOOKS: ReadonlyMap<string, Look> = new Map();
 const NO_REACTIONS: ReadonlyMap<string, ReactionCounts> = new Map();
 
 /**
@@ -27,6 +28,8 @@ const NO_REACTIONS: ReadonlyMap<string, ReactionCounts> = new Map();
 export function useNotes(campaigns: Campaign[] | undefined): {
   reactions: ReadonlyMap<string, ReactionCounts>;
   plots: ReadonlyMap<string, Plot>;
+  /** The look each creator chose for their campaign's object. */
+  looks: ReadonlyMap<string, Look>;
   /** What the connected wallet reacted with, as `campaign:kind`. Only known with a database. */
   mine: ReadonlySet<string>;
   /** Whether reactions are kept in the database rather than on chain. */
@@ -83,7 +86,7 @@ export function useNotes(campaigns: Campaign[] | undefined): {
         const notes = await readNotes(connection);
         // A claim only counts if the campaign's creator signed it, so each one is looked up.
         const signed = new Map<string, string[]>();
-        for (const claim of notes.claims) {
+        for (const claim of [...notes.claims, ...notes.looks]) {
           try {
             signed.set(claim.signature, await signersOf(connection, claim.signature));
           } catch {
@@ -116,7 +119,20 @@ export function useNotes(campaigns: Campaign[] | undefined): {
     );
   }, [read, campaigns]);
 
+  const looks = useMemo(() => {
+    if (!read || !campaigns) return NO_LOOKS;
+    const creators = new Map(
+      campaigns.map((campaign) => [campaign.address.toBase58(), campaign.creator.toBase58()]),
+    );
+    return judgeLooks(
+      read.notes.looks,
+      (campaign) => creators.get(campaign),
+      (signature) => read.signed.get(signature),
+    );
+  }, [read, campaigns]);
+
   return {
+    looks,
     reactions: inDatabase ? fromDatabase : (read?.notes.reactions ?? NO_REACTIONS),
     plots,
     mine,
