@@ -11,10 +11,9 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
+import { buildWorld, FAR_WALL, SKY, Strollers } from "@/components/museum/world";
 import {
   canStand,
-  CORRIDORS,
-  ENTRANCE,
   type Exhibit,
   type Room,
   roomAt,
@@ -27,7 +26,6 @@ import {
   stepFrom,
 } from "@/lib/museum/plan";
 
-const CARBON = "#171917";
 const PAPER = "#f0efe7";
 const LIME = "#d8f59a";
 const ORANGE = "#ff6338";
@@ -41,8 +39,6 @@ const PITCH = Math.atan2(OFFSET.y, Math.hypot(OFFSET.x, OFFSET.z));
 const ZOOM_MIN = 11;
 const ZOOM_MAX = 84;
 const BOUNDS = { minX: -13, maxX: 23, minZ: -20, maxZ: 22 };
-const WALL = 1.9;
-const CURB = 0.22;
 const WALK = 5.2;
 const STRIDE = 11;
 const NEAR = 2.9;
@@ -102,6 +98,7 @@ export class MuseumScene {
   private readonly held = new Set<Direction>();
   private following = false;
   private stuck = 0;
+  private readonly strollers: Strollers;
 
   // Space the page's own panels cover, so what is looked at is centred in what is left.
   private insetLeft = 0;
@@ -134,19 +131,23 @@ export class MuseumScene {
       "absolute left-0 top-0 whitespace-nowrap bg-carbon/85 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-paper";
     this.labels.appendChild(this.visitorTag);
 
-    this.scene.background = new THREE.Color(CARBON);
-    this.scene.add(new THREE.HemisphereLight(PAPER, "#3a3d39", 1.35));
-    const sun = new THREE.DirectionalLight("#fff3da", 2.9);
-    sun.position.set(-10, 22, 9);
-    sun.target.position.set(6, 0, 0);
+    // Daylight: a bright sky, and a sun in the north-west so shadows fall towards the viewer.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.08;
+    this.scene.background = new THREE.Color(SKY);
+    this.scene.add(new THREE.HemisphereLight("#eaf6ff", "#8aa26f", 1.25));
+    const sun = new THREE.DirectionalLight("#fff1d6", 3.1);
+    sun.position.set(-16, 26, -9);
+    sun.target.position.set(5, 0, 2);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(4096, 4096);
     sun.shadow.bias = -0.0004;
     sun.shadow.radius = 3;
-    Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 80 });
+    Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 110 });
     this.scene.add(sun, sun.target);
 
-    this.build();
+    buildWorld(this.scene);
+    this.strollers = new Strollers(this.scene, calm ? 0 : 14);
     this.scene.add(this.exhibitRoot);
 
     const ring = new THREE.RingGeometry(1.0, 1.12, 56);
@@ -193,283 +194,6 @@ export class MuseumScene {
   }
 
   // -------------------------------------------------------------------------------------------
-  // The building
-  // -------------------------------------------------------------------------------------------
-
-  private slab(
-    width: number,
-    height: number,
-    depth: number,
-    x: number,
-    y: number,
-    z: number,
-    material: THREE.Material,
-    casts = true,
-  ) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = casts;
-    mesh.receiveShadow = true;
-    this.scene.add(mesh);
-    return mesh;
-  }
-
-  /** Concrete laid in two-metre slabs: a light field with a darker joint round each. */
-  private paving(width: number, depth: number, color: string) {
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 128;
-    const context = canvas.getContext("2d") as CanvasRenderingContext2D;
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, 128, 128);
-    // A little unevenness, so the floor does not look printed.
-    for (let index = 0; index < 220; index++) {
-      context.fillStyle = `rgba(0,0,0,${0.015 + ((index * 37) % 10) / 400})`;
-      context.fillRect((index * 53) % 128, (index * 97) % 128, 3 + (index % 5), 2 + (index % 3));
-    }
-    context.strokeStyle = "rgba(0,0,0,0.3)";
-    context.lineWidth = 2;
-    context.strokeRect(1, 1, 126, 126);
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(width / 2, depth / 2);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
-    return new THREE.MeshStandardMaterial({ color, map: texture, roughness: 0.95 });
-  }
-
-  /** Words drawn once onto a picture that can be laid on a floor or hung on a wall. */
-  private lettering(
-    lines: { text: string; size: number; weight: number; alpha: number; x: number; y: number }[],
-  ) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 2048;
-    canvas.height = 512;
-    const context = canvas.getContext("2d") as CanvasRenderingContext2D;
-    context.fillStyle = PAPER;
-    context.textBaseline = "alphabetic";
-    for (const line of lines) {
-      context.globalAlpha = line.alpha;
-      context.font = `${line.weight} ${line.size}px "Segoe UI", system-ui, -apple-system, Arial, sans-serif`;
-      context.fillText(line.text, line.x, line.y);
-    }
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 8;
-    return new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
-  }
-
-  /** A wall along one edge of a room, left open where a corridor passes through it. */
-  private wall(
-    room: Room,
-    side: "n" | "s" | "e" | "w",
-    height: number,
-    material: THREE.Material,
-    cap?: THREE.Material,
-  ) {
-    const along = side === "n" || side === "s";
-    const length = along ? room.width : room.depth;
-    const fixed =
-      side === "n"
-        ? room.z - room.depth / 2
-        : side === "s"
-          ? room.z + room.depth / 2
-          : side === "w"
-            ? room.x - room.width / 2
-            : room.x + room.width / 2;
-    const centre = along ? room.x : room.z;
-
-    // The stretch of this wall a corridor needs open, if one touches it.
-    const door = CORRIDORS.find((corridor) => {
-      const reach = along ? corridor.depth / 2 : corridor.width / 2;
-      const position = along ? corridor.z : corridor.x;
-      const across = along ? corridor.x : corridor.z;
-      return Math.abs(position - fixed) <= reach + 0.01 && Math.abs(across - centre) < length / 2;
-    });
-    const pieces: [number, number][] = [];
-    if (door) {
-      const across = along ? door.x : door.z;
-      const half = (along ? door.width : door.depth) / 2;
-      pieces.push([centre - length / 2, across - half], [across + half, centre + length / 2]);
-    } else {
-      pieces.push([centre - length / 2, centre + length / 2]);
-    }
-    const thick = 0.42;
-    for (const [from, to] of pieces) {
-      if (to - from < 0.05) continue;
-      const middle = (from + to) / 2;
-      if (along) {
-        this.slab(to - from, height, thick, middle, height / 2, fixed, material);
-        if (cap) this.slab(to - from + 0.08, 0.09, thick + 0.14, middle, height + 0.045, fixed, cap, false);
-      } else {
-        this.slab(thick, height, to - from, fixed, height / 2, middle, material);
-        if (cap) this.slab(thick + 0.14, 0.09, to - from + 0.08, fixed, height + 0.045, middle, cap, false);
-      }
-    }
-    // A steel frame stands in the opening of a tall wall, so a door reads as a door.
-    if (door && cap) {
-      const steel = new THREE.MeshStandardMaterial({ color: "#1c1e1c", roughness: 0.5, metalness: 0.6 });
-      const across = along ? door.x : door.z;
-      const half = (along ? door.width : door.depth) / 2;
-      for (const edge of [across - half + 0.1, across + half - 0.1]) {
-        if (along) this.slab(0.2, 2.5, 0.5, edge, 1.25, fixed, steel);
-        else this.slab(0.5, 2.5, 0.2, fixed, 1.25, edge, steel);
-      }
-      if (along) this.slab(half * 2, 0.22, 0.5, across, 2.5, fixed, steel);
-      else this.slab(0.5, 0.22, half * 2, fixed, 2.5, across, steel);
-    }
-  }
-
-  private build() {
-    const floors: Record<RoomId, string> = {
-      unmade: "#74786f",
-      workshop: "#676c5c",
-      realized: "#8c8f85",
-      almost: "#5a5d57",
-    };
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: "#3b3e3a", roughness: 0.95 });
-    const capMaterial = new THREE.MeshStandardMaterial({ color: "#7d8179", roughness: 0.9 });
-    const curbMaterial = new THREE.MeshStandardMaterial({ color: "#2f322f", roughness: 0.95 });
-    const steel = new THREE.MeshStandardMaterial({ color: "#6d726a", roughness: 0.55, metalness: 0.35 });
-    const dark = new THREE.MeshStandardMaterial({ color: "#242624", roughness: 0.6, metalness: 0.4 });
-    const paper = new THREE.MeshStandardMaterial({ color: PAPER, roughness: 0.8 });
-
-    // The ground the building stands on, ruled like a drawing.
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(240, 240).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: "#1b1d1b", roughness: 1 }),
-    );
-    ground.position.y = -0.42;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
-    const grid = new THREE.GridHelper(240, 120, "#2a2d2a", "#222422");
-    grid.position.y = -0.41;
-    this.scene.add(grid);
-
-    for (const room of ROOMS) {
-      this.slab(
-        room.width,
-        0.4,
-        room.depth,
-        room.x,
-        -0.2,
-        room.z,
-        this.paving(room.width, room.depth, floors[room.id]),
-        false,
-      );
-      // A dark course under the floor, so the building sits on the ground like a model.
-      this.slab(room.width + 0.9, 0.2, room.depth + 0.9, room.x, -0.32, room.z, dark, false);
-      // Tall on the two far sides, cut low on the two near ones so the room can be looked into.
-      this.wall(room, "n", WALL, wallMaterial, capMaterial);
-      this.wall(room, "w", WALL, wallMaterial, capMaterial);
-      this.wall(room, "s", CURB, curbMaterial);
-      this.wall(room, "e", CURB, curbMaterial);
-      // A column where the two tall walls meet.
-      this.slab(0.7, WALL + 0.5, 0.7, room.x - room.width / 2, (WALL + 0.5) / 2, room.z - room.depth / 2, dark);
-      this.sign(room);
-    }
-    for (const corridor of CORRIDORS) {
-      this.slab(
-        corridor.width,
-        0.4,
-        corridor.depth,
-        corridor.x,
-        -0.2,
-        corridor.z,
-        this.paving(corridor.width, corridor.depth, "#62665f"),
-        false,
-      );
-    }
-
-    // The way in: a step down to the ground and the name laid out in front of it.
-    this.slab(1.2, 0.2, ENTRANCE.depth + 1.2, ENTRANCE.x - 2, -0.3, ENTRANCE.z, dark, false);
-    const name = new THREE.Mesh(
-      new THREE.PlaneGeometry(9, 2.25).rotateX(-Math.PI / 2),
-      this.lettering([
-        { text: "EARNEST", size: 250, weight: 700, alpha: 0.9, x: 20, y: 270 },
-        { text: "MUSEUM OF THINGS THAT ALMOST EXISTED", size: 74, weight: 600, alpha: 0.55, x: 28, y: 400 },
-      ]),
-    );
-    name.position.set(ENTRANCE.x - 3.2, -0.405, ENTRANCE.z + 4.6);
-    this.scene.add(name);
-
-    // What sets the rooms apart without a word.
-    const hall = ROOMS[0];
-    for (const dx of [-3.6, 3.6]) {
-      this.slab(2.6, 0.42, 0.55, hall.x + dx, 0.21, hall.z + hall.depth / 2 - 0.5, dark);
-    }
-
-    const workshop = ROOMS[1];
-    const west = workshop.x - workshop.width / 2;
-    this.slab(0.6, 0.9, 2.4, west + 0.55, 0.45, workshop.z + 3.4, steel);
-    this.slab(0.5, 1.5, 1.6, west + 0.5, 0.75, workshop.z - 3.6, dark);
-    for (const dz of [2.7, 3.4, 4.1]) {
-      this.slab(0.34, 0.3, 0.4, west + 0.55, 1.05, workshop.z + dz, paper);
-    }
-    // A painted line round the working floor, the one place the orange is spent on a room.
-    const paint = new THREE.MeshBasicMaterial({ color: ORANGE });
-    const inner = { w: workshop.width - 3.2, d: workshop.depth - 2.6 };
-    const lines: [number, number, number, number][] = [
-      [inner.w, 0.07, workshop.x + 0.4, workshop.z - inner.d / 2],
-      [inner.w, 0.07, workshop.x + 0.4, workshop.z + inner.d / 2],
-      [0.07, inner.d, workshop.x + 0.4 - inner.w / 2, workshop.z],
-      [0.07, inner.d, workshop.x + 0.4 + inner.w / 2, workshop.z],
-    ];
-    for (const [w, d, x, z] of lines) {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), paint);
-      line.position.set(x, 0.006, z);
-      this.scene.add(line);
-    }
-
-    const realized = ROOMS[2];
-    const glow = new THREE.MeshBasicMaterial({ color: "#fffdf2" });
-    this.slab(
-      realized.width - 2,
-      0.07,
-      0.16,
-      realized.x,
-      WALL - 0.35,
-      realized.z - realized.depth / 2 + 0.26,
-      glow,
-      false,
-    );
-    const runner = new THREE.Mesh(
-      new THREE.PlaneGeometry(realized.width - 2.4, realized.depth - 2.6).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: "#a9aca1", roughness: 0.9 }),
-    );
-    runner.position.set(realized.x, 0.004, realized.z);
-    runner.receiveShadow = true;
-    this.scene.add(runner);
-
-    const almost = ROOMS[3];
-    const back = almost.z - almost.depth / 2 + 0.6;
-    for (const dx of [-5.6, -1.9, 1.9, 5.6]) {
-      this.slab(2.8, 1.25, 0.5, almost.x + dx, 0.625, back, steel);
-      // Boxes of records on the shelves.
-      for (const bx of [-0.8, -0.1, 0.7]) {
-        this.slab(0.5, 0.36, 0.38, almost.x + dx + bx, 1.44, back, paper);
-      }
-    }
-  }
-
-  /** The room's letter and name: painted along the near edge of its floor, and its letter hung on the far wall. */
-  private sign(room: Room) {
-    const floor = this.lettering([
-      { text: room.code, size: 300, weight: 700, alpha: 0.92, x: 20, y: 330 },
-      { text: room.name.toUpperCase(), size: 150, weight: 600, alpha: 0.5, x: 300, y: 310 },
-    ]);
-    const width = Math.min(room.width - 1.6, 10);
-    const painted = new THREE.Mesh(new THREE.PlaneGeometry(width, width / 4).rotateX(-Math.PI / 2), floor);
-    painted.position.set(room.x - room.width / 2 + 0.9 + width / 2, 0.012, room.z + room.depth / 2 - 1.35);
-    this.scene.add(painted);
-
-    // On the wall: the letter alone, large enough to find the room from across the building.
-    const wall = this.lettering([{ text: room.code, size: 470, weight: 700, alpha: 0.85, x: 30, y: 430 }]);
-    const hung = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), wall);
-    hung.position.set(room.x + room.width / 2 - 3.6, WALL / 2 + 0.05, room.z - room.depth / 2 + 0.23);
-    this.scene.add(hung);
-  }
-
-  // -------------------------------------------------------------------------------------------
   // Exhibits
   // -------------------------------------------------------------------------------------------
 
@@ -500,9 +224,23 @@ export class MuseumScene {
     this.tags.clear();
     this.hung = exhibits;
 
-    const paper = this.own(new THREE.MeshStandardMaterial({ color: PAPER, roughness: 0.75 }));
-    const base = this.own(new THREE.MeshStandardMaterial({ color: "#20221f", roughness: 0.6, metalness: 0.3 }));
-    const archive = this.own(new THREE.MeshStandardMaterial({ color: "#c4c5bb", roughness: 0.9 }));
+    const paper = this.own(new THREE.MeshStandardMaterial({ color: "#f7f1e1", roughness: 0.7 }));
+    const base = this.own(new THREE.MeshStandardMaterial({ color: "#6b4a32", roughness: 0.7 }));
+    const archive = this.own(new THREE.MeshStandardMaterial({ color: "#d9cfb8", roughness: 0.9 }));
+    const brass = this.own(new THREE.MeshStandardMaterial({ color: "#d0a52e", roughness: 0.35, metalness: 0.6 }));
+    const rope = this.own(new THREE.MeshStandardMaterial({ color: "#a3312d", roughness: 0.9 }));
+    const boards: Record<string, THREE.Material> = {
+      funding: this.own(new THREE.MeshStandardMaterial({ color: LIME, roughness: 0.6 })),
+      building: this.own(new THREE.MeshStandardMaterial({ color: "#ffcf5c", roughness: 0.6 })),
+      completed: this.own(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.6 })),
+      failed: this.own(new THREE.MeshStandardMaterial({ color: "#cfc7b4", roughness: 0.8 })),
+      braked: this.own(new THREE.MeshStandardMaterial({ color: ORANGE, roughness: 0.6 })),
+    };
+    const stanchion = this.keep(new THREE.CylinderGeometry(0.045, 0.07, 0.62, 8));
+    const cord = this.keep(new THREE.BoxGeometry(2.1, 0.045, 0.045));
+    const cordAcross = this.keep(new THREE.BoxGeometry(0.045, 0.045, 2.1));
+    const standPost = this.keep(new THREE.BoxGeometry(0.07, 0.62, 0.07));
+    const standBoard = this.keep(new THREE.BoxGeometry(0.62, 0.42, 0.05));
     const dark = this.own(new THREE.MeshStandardMaterial({ color: "#2c2e2b", roughness: 0.5, metalness: 0.5 }));
     const glass = this.own(
       new THREE.MeshStandardMaterial({
@@ -577,12 +315,38 @@ export class MuseumScene {
       plinth.position.y = height / 2 + 0.1;
       plinth.castShadow = plinth.receiveShadow = true;
       group.add(foot, plinth);
+
+      // Brass posts and a rope round three sides; the front is open, where the seats are.
+      for (const [dx, dz] of [[-1.05, -1.05], [1.05, -1.05], [-1.05, 0.72], [1.05, 0.72]]) {
+        const mesh = new THREE.Mesh(stanchion, brass);
+        mesh.position.set(dx, 0.31, dz);
+        mesh.castShadow = true;
+        group.add(mesh);
+      }
+      const far = new THREE.Mesh(cord, rope);
+      far.position.set(0, 0.52, -1.05);
+      group.add(far);
+      for (const dx of [-1.05, 1.05]) {
+        const side = new THREE.Mesh(cordAcross, rope);
+        side.scale.z = 1.77 / 2.1;
+        side.position.set(dx, 0.52, -0.165);
+        group.add(side);
+      }
+      // A stand with a card on it; the card's colour says which state the campaign is in.
+      const standLeg = new THREE.Mesh(standPost, base);
+      standLeg.position.set(-1.25, 0.31, 1.2);
+      const card = new THREE.Mesh(standBoard, boards[status]);
+      card.position.set(-1.25, 0.72, 1.2);
+      card.rotation.set(-0.5, Math.PI / 4, 0, "YXZ");
+      card.castShadow = true;
+      group.add(standLeg, card);
       const top = height + 0.1;
 
       // One material per exhibit, so one can light up without the others.
-      const material = this.own(standInMaterial(status));
+      const material = this.own(standInMaterial(status, exhibit.kind));
       const object = standIn(exhibit.kind, material, (geometry) => this.keep(geometry));
       object.position.y = top;
+      object.scale.setScalar(1.25);
       object.userData.material = material;
       object.userData.rest = material.emissiveIntensity;
       object.userData.base = top;
@@ -887,7 +651,7 @@ export class MuseumScene {
     const height = Math.max(200, this.host.clientHeight - this.insetBottom);
     // How wide and tall the room's floor is once seen from this angle.
     const across = (room.width + room.depth) / Math.SQRT2;
-    const down = ((room.width + room.depth) / Math.SQRT2) * Math.sin(PITCH) + WALL * Math.cos(PITCH);
+    const down = ((room.width + room.depth) / Math.SQRT2) * Math.sin(PITCH) + FAR_WALL * Math.cos(PITCH);
     return THREE.MathUtils.clamp(Math.min(width / (across + 2), height / (down + 2.5)), ZOOM_MIN, ZOOM_MAX);
   }
 
@@ -911,6 +675,7 @@ export class MuseumScene {
     const seconds = Math.min(0.05, Math.max(0, (time - this.last) / 1000));
     this.last = time;
     this.clock += seconds;
+    this.strollers.step(seconds, this.clock, this.hung);
 
     const walked = this.walk(seconds);
     const position = this.visitor.position;

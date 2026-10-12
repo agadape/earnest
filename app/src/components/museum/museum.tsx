@@ -342,17 +342,17 @@ export function Museum() {
                 <>
                   You are walking the floor as{" "}
                   <span className="font-mono text-paper">{shortAddress(publicKey)}</span>. Visiting
-                  pledges nothing; only taking a seat does. Nobody else is shown: this museum
-                  does not track who is in it.
+                  pledges nothing; only taking a seat does. The other figures are scenery: this
+                  museum does not track who is in it.
                 </>
               ) : (
-                "You are walking as a guest. Connect a wallet and the figure on the floor carries its address. Looking around needs none."
+                "You are walking as a guest. Connect a wallet and your figure carries its address. The other figures are scenery, not people."
               )}
             </p>
           </nav>
 
           <div className="pointer-events-auto flex items-center gap-1.5">
-            <p className="mr-2 hidden text-xs text-paper/60 md:block">
+            <p className="mr-2 hidden bg-carbon/85 px-3 py-2 text-xs text-paper/80 md:block">
               WASD or arrows walk · click the floor to go there · drag to look · scroll to zoom
             </p>
             {(

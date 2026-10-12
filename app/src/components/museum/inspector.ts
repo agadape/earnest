@@ -51,7 +51,7 @@ export class Inspector {
     rim.position.set(3, 1.5, -3);
     this.scene.add(rim);
 
-    const object = standIn(kind, standInMaterial(status));
+    const object = standIn(kind, standInMaterial(status, kind));
     object.scale.setScalar(1.3);
     object.position.y = 0.2;
     object.traverse((child) => {

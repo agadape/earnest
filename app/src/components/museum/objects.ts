@@ -7,27 +7,33 @@ import * as THREE from "three";
 import type { Kind } from "@/lib/museum/plan";
 import type { Status } from "@/lib/tanda-jadi";
 
-const STEEL = "#8d9388";
-const PAPER = "#f0efe7";
-const LIME = "#d8f59a";
+/** A colour for each kind of object, so a room of exhibits is not a room of one colour. */
+const TINTS: Record<Kind, string> = {
+  screen: "#3fa7d6",
+  orb: "#f25f5c",
+  tower: "#ffb347",
+  ring: "#9b5de5",
+  arch: "#2ec4b6",
+  prism: "#ff7f50",
+  stack: "#f7b801",
+  knot: "#e56b9b",
+};
 
-/** What an exhibit's object is made of: it says which state the campaign is in. */
-export function standInMaterial(status: Status): THREE.MeshStandardMaterial {
+/**
+ * What an exhibit's object is made of. Its colour comes from its kind; a campaign that ended
+ * unmade loses the colour, and one still looking for backers glows a little.
+ */
+export function standInMaterial(status: Status, kind: Kind): THREE.MeshStandardMaterial {
+  const tint = TINTS[kind];
   switch (status) {
     case "funding":
-      return new THREE.MeshStandardMaterial({ color: LIME, roughness: 0.35, emissive: LIME, emissiveIntensity: 0.18 });
+      return new THREE.MeshStandardMaterial({ color: tint, roughness: 0.4, emissive: tint, emissiveIntensity: 0.22 });
     case "building":
-      return new THREE.MeshStandardMaterial({
-        color: STEEL,
-        roughness: 0.35,
-        metalness: 0.65,
-        emissive: LIME,
-        emissiveIntensity: 0,
-      });
+      return new THREE.MeshStandardMaterial({ color: tint, roughness: 0.5, metalness: 0.2, emissive: tint, emissiveIntensity: 0.05 });
     case "completed":
-      return new THREE.MeshStandardMaterial({ color: "#fbfaf4", roughness: 0.3, emissive: PAPER, emissiveIntensity: 0.1 });
+      return new THREE.MeshStandardMaterial({ color: tint, roughness: 0.25, metalness: 0.15, emissive: tint, emissiveIntensity: 0.1 });
     default:
-      return new THREE.MeshStandardMaterial({ color: "#8f938a", roughness: 0.95, emissive: PAPER, emissiveIntensity: 0 });
+      return new THREE.MeshStandardMaterial({ color: "#a39e93", roughness: 0.95, emissive: "#f0efe7", emissiveIntensity: 0 });
   }
 }
 

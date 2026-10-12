@@ -88,9 +88,10 @@ Rooms follow the campaign's own state and nothing else:
   picked from the title and the address, and the panel says so.
 - **Rooms have a fixed number of places** (8, 6, 6 and 12). The newest campaigns are hung; the
   rest are counted in the room's label and found in the catalog.
-- **Other visitors are not shown.** There is no shared presence, and none is simulated. The one
-  figure on the floor is the person looking: a guest, or a connected wallet carrying its
-  address. The lit seats in front of an exhibit are real: they are the seats taken on chain.
+- **Other visitors are not shown.** There is no shared presence. The figure with the label is
+  the person looking: a guest, or a connected wallet carrying its address. The dozen or so
+  other figures strolling the rooms are scenery, like the trees outside; they stand for nobody,
+  and the page says so next to the directory. The lit seats in front of an exhibit are real: they are the seats taken on chain.
 - **Walking was tested as rules, not watched.** The tests step a visitor across a full museum.
   The browser used for checking does not run animation frames in the background, so nobody has
   yet watched the figure walk on this machine.
