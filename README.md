@@ -194,6 +194,11 @@ reactions is a count of signed transactions, not of people.
 
     RPC_URL=https://api.devnet.solana.com npx tsx scripts/notes.ts     # read them, from app/
 
+Reactions can be kept in Supabase instead, free to give and one of each kind per wallet: run
+`supabase/reactions.sql` in the project's SQL editor and set `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` for the app's server. The key must never get a `NEXT_PUBLIC_` name.
+Rooms stay on chain.
+
 ## What this does not solve
 
 Stated plainly, because a reader will find them anyway.

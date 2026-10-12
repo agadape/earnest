@@ -1,14 +1,18 @@
 "use client";
 
-import { useConnection } from "@solana/wallet-adapter-react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { judgeClaims, type Notes, type Plot, type ReactionCounts, readNotes, signersOf } from "@/lib/ledger";
 import { PLOTS } from "@/lib/museum/plan";
+import type { ReactionsAnswer } from "@/lib/reactions";
 import type { Campaign } from "@/lib/tanda-jadi";
 
 // Reactions and rooms change far less often than seats do, and reading them is a heavier question.
 const EVERY_MS = 12_000;
+// Reactions kept in the database are one cheap question, so they are asked for more often.
+const REACTIONS_EVERY_MS = 5_000;
+const NOTHING_MINE: ReadonlySet<string> = new Set();
 const NO_PLOTS: ReadonlyMap<string, Plot> = new Map();
 const NO_REACTIONS: ReadonlyMap<string, ReactionCounts> = new Map();
 
@@ -16,16 +20,60 @@ const NO_REACTIONS: ReadonlyMap<string, ReactionCounts> = new Map();
  * The notes kept on chain beside the campaigns: how often each was reacted to, and which annex
  * plot each creator built on. Read now, every twelve seconds, and whenever `reload` is called.
  * A network that does not answer leaves the last good reading in place.
+ *
+ * Where the site has a database for reactions they come from there, one of each kind per
+ * wallet; otherwise they are the reaction notes on chain. Rooms are always read from the chain.
  */
 export function useNotes(campaigns: Campaign[] | undefined): {
   reactions: ReadonlyMap<string, ReactionCounts>;
   plots: ReadonlyMap<string, Plot>;
+  /** What the connected wallet reacted with, as `campaign:kind`. Only known with a database. */
+  mine: ReadonlySet<string>;
+  /** Whether reactions are kept in the database rather than on chain. */
+  inDatabase: boolean;
+  /** Takes the database's answer to a reaction just given, so the page need not ask again. */
+  accept(answer: ReactionsAnswer): void;
   reload(): void;
 } {
   const { connection } = useConnection();
   const [read, setRead] = useState<{ notes: Notes; signed: Map<string, string[]> } | null>(null);
   const [turn, setTurn] = useState(0);
   const reload = useCallback(() => setTurn((count) => count + 1), []);
+  const { publicKey } = useWallet();
+  const wallet = publicKey?.toBase58() ?? null;
+  const [kept, setKept] = useState<ReactionsAnswer | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = async () => {
+      let again = REACTIONS_EVERY_MS;
+      try {
+        const response = await fetch(`/api/reactions${wallet ? `?wallet=${wallet}` : ""}`);
+        if (response.ok) {
+          const answer = (await response.json()) as ReactionsAnswer;
+          if (active) setKept(answer);
+          // No database on this site: there is nothing to keep asking about.
+          if (!answer.configured) again = 0;
+        }
+      } catch {
+        // Keep what was read before.
+      }
+      if (active && again > 0) timer = setTimeout(run, again);
+    };
+    run();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [wallet, turn]);
+
+  const inDatabase = kept?.configured === true;
+  const fromDatabase = useMemo(
+    () => new Map(Object.entries(kept?.counts ?? {})) as ReadonlyMap<string, ReactionCounts>,
+    [kept],
+  );
+  const mine = useMemo(() => (kept?.mine.length ? new Set(kept.mine) : NOTHING_MINE), [kept]);
 
   useEffect(() => {
     let active = true;
@@ -68,5 +116,12 @@ export function useNotes(campaigns: Campaign[] | undefined): {
     );
   }, [read, campaigns]);
 
-  return { reactions: read?.notes.reactions ?? NO_REACTIONS, plots, reload };
+  return {
+    reactions: inDatabase ? fromDatabase : (read?.notes.reactions ?? NO_REACTIONS),
+    plots,
+    mine,
+    inDatabase,
+    accept: setKept,
+    reload,
+  };
 }

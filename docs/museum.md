@@ -108,6 +108,17 @@ Rooms follow the campaign's own state and nothing else:
   a second annex nobody has built. Only the newest three thousand notes are read. Checked on
   devnet: a claim by a wallet that is not the creator and a claim on a taken plot were both
   ignored, and a room was built from the app with the demo wallet.
+- **Reactions can live in a database instead.** With `SUPABASE_URL` and
+  `SUPABASE_SERVICE_ROLE_KEY` set and `supabase/reactions.sql` run, reactions are kept in a
+  Supabase table through `/api/reactions`: a wallet signs a message, which costs nothing, the
+  server checks the signature and its age, and the table's key allows one reaction of each
+  kind per wallet and campaign; a second press takes it back. That trades something away: the
+  rows are the site's to keep honest and nobody outside can check them, where the notes on
+  chain can be checked by anyone. Wallets are free to make, so a count is of wallets, not of
+  people. Rooms stay on chain either way, because who may place one is the creator's signature
+  on a transaction. Without the two variables nothing changes: reactions are read from the
+  chain as before. The route was tested against a stand-in for the database, not against
+  Supabase itself.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and

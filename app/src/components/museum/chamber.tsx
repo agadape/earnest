@@ -1,11 +1,15 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { CampaignView } from "@/components/campaign-view";
 import type { Inspector } from "@/components/museum/inspector";
+import { useToasts } from "@/components/toasts";
 import { formatDate, formatDuration, shortAddress, usd } from "@/lib/format";
-import { type ReactionCounts, reactIx, REACTIONS } from "@/lib/ledger";
+import { type ReactionCounts, type ReactionKind, reactIx, REACTIONS } from "@/lib/ledger";
+import { reactionMessage, type ReactionsAnswer } from "@/lib/reactions";
 import { type Exhibit, ROOMS, STATUS_WORDS } from "@/lib/museum/plan";
 import { bond, buildEnd } from "@/lib/tanda-jadi";
 import { useSend } from "@/lib/transactions";
@@ -18,6 +22,9 @@ export function Frame({ className = "", children }: { className?: string; childr
     </div>
   );
 }
+
+/** The time a reaction is signed at, which the server checks is recent. */
+const rightNow = () => Date.now();
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -58,6 +65,8 @@ export function Chamber({
   onMap,
   onCreator,
   reactions,
+  mine,
+  inDatabase,
   onReacted,
   onPlace,
   hasRoom,
@@ -72,12 +81,59 @@ export function Chamber({
   onCreator: (creator: string) => void;
   /** How often it was reacted to, by kind. Missing until the notes were read. */
   reactions: ReactionCounts | undefined;
-  onReacted: () => void;
+  /** What the connected wallet reacted with, as `campaign:kind`. */
+  mine: ReadonlySet<string>;
+  /** Whether reactions are kept in the database (a signed message) or on chain (a transaction). */
+  inDatabase: boolean;
+  /** Called after a reaction went through, with the database's answer where there is one. */
+  onReacted: (answer?: ReactionsAnswer) => void;
   /** Starts choosing an annex plot for it. Only given to the wallet that created it. */
   onPlace?: () => void;
   hasRoom: boolean;
 }) {
   const { send, busy } = useSend();
+  const { publicKey, signMessage } = useWallet();
+  const toasts = useToasts();
+  const [signing, setSigning] = useState<ReactionKind | null>(null);
+
+  /** Adds a reaction, or takes back one this wallet already gave. */
+  const react = async (kind: ReactionKind) => {
+    if (!inDatabase) {
+      const sent = await send(`react-${kind}`, {
+        pending: "Signing your reaction",
+        done: "Your reaction is on the record",
+        build: async (payer) => [reactIx(payer, new PublicKey(address), kind)],
+      });
+      if (sent) onReacted();
+      return;
+    }
+    if (!publicKey) {
+      toasts.show("error", "Connect a wallet first.");
+      return;
+    }
+    if (!signMessage) {
+      toasts.show("error", "This wallet cannot sign messages, which a reaction needs.");
+      return;
+    }
+    setSigning(kind);
+    try {
+      const wallet = publicKey.toBase58();
+      const request = { campaign: address, kind, wallet, on: !mine.has(`${address}:${kind}`), at: rightNow() };
+      const signature = await signMessage(new TextEncoder().encode(reactionMessage(request)));
+      const response = await fetch("/api/reactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...request, signature: btoa(String.fromCharCode(...signature)) }),
+      });
+      const answer = (await response.json()) as ReactionsAnswer & { error?: string };
+      if (!response.ok) throw new Error(answer.error ?? "The reaction could not be saved.");
+      onReacted(answer);
+    } catch (error) {
+      toasts.show("error", error instanceof Error ? error.message : "The reaction could not be saved.");
+    } finally {
+      setSigning(null);
+    }
+  };
   const stage = useRef<HTMLDivElement>(null);
   const inspector = useRef<Inspector | null>(null);
   const kind = exhibit?.kind;
@@ -158,16 +214,12 @@ export function Chamber({
                   type="button"
                   title={label}
                   aria-label={`${label}: ${reactions?.[kind] ?? 0} so far. React.`}
-                  disabled={busy !== null}
-                  onClick={async () => {
-                    const sent = await send(`react-${kind}`, {
-                      pending: "Signing your reaction",
-                      done: "Your reaction is on the record",
-                      build: async (payer) => [reactIx(payer, campaign.address, kind)],
-                    });
-                    if (sent) onReacted();
-                  }}
-                  className="flex h-9 flex-1 items-center justify-center gap-1.5 border border-paper/30 font-mono text-sm text-paper hover:border-lime disabled:opacity-50"
+                  aria-pressed={mine.has(`${address}:${kind}`)}
+                  disabled={busy !== null || signing !== null}
+                  onClick={() => react(kind)}
+                  className={`flex h-9 flex-1 items-center justify-center gap-1.5 border font-mono text-sm hover:border-lime disabled:opacity-50 ${
+                    mine.has(`${address}:${kind}`) ? "border-lime bg-lime/15 text-lime" : "border-paper/30 text-paper"
+                  }`}
                 >
                   <span aria-hidden>{sign}</span>
                   {reactions?.[kind] ?? 0}
@@ -175,8 +227,10 @@ export function Chamber({
               ))}
             </div>
             <p className="mt-2 text-[11px] leading-4 text-paper/55">
-              Each one is a transaction you sign. One wallet can react more than once, so this
-              counts reactions, not people. They gather a crowd round the exhibit.
+              {inDatabase
+                ? "You sign a message; it costs nothing. One of each kind per wallet, and a second press takes it back. A count is of wallets, not people. "
+                : "Each one is a transaction you sign. One wallet can react more than once, so this counts reactions, not people. "}
+              They gather a crowd round the exhibit.
             </p>
           </div>
           {onPlace && (

@@ -1,13 +1,15 @@
 import {
-  BaseSignerWalletAdapter,
+  BaseMessageSignerWalletAdapter,
   isVersionedTransaction,
   type WalletError,
   type WalletName,
   WalletNotConnectedError,
   WalletNotReadyError,
   WalletReadyState,
+  WalletSignMessageError,
   WalletSignTransactionError,
 } from "@solana/wallet-adapter-base";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import {
   Keypair,
   type PublicKey,
@@ -59,7 +61,7 @@ function write(keypairs: Keypair[], active: number) {
  * so that anyone can try the app with play money and nothing installed, and so that one person
  * can act as several backers. It must never be offered where the token is worth something.
  */
-export class DemoWalletAdapter extends BaseSignerWalletAdapter<"Demo wallet"> {
+export class DemoWalletAdapter extends BaseMessageSignerWalletAdapter<"Demo wallet"> {
   name = DEMO_WALLET_NAME;
   url = "https://solana.com/docs/intro/wallets";
   icon = ICON;
@@ -139,6 +141,22 @@ export class DemoWalletAdapter extends BaseSignerWalletAdapter<"Demo wallet"> {
     if (!this.isConnected) return;
     this.keypairs = [...this.keypairs, Keypair.generate()];
     this.switchTo(this.keypairs.length - 1);
+  }
+
+  /** Signs a message, which costs nothing and moves nothing: proof that this wallet said so. */
+  async signMessage(message: Uint8Array): Promise<Uint8Array> {
+    try {
+      if (!this.isConnected) throw new WalletNotConnectedError();
+      // The first half of a Solana secret key is the seed the signature is made from.
+      return ed25519.sign(message, this.keypairs[this.active].secretKey.slice(0, 32));
+    } catch (error) {
+      const wrapped =
+        error instanceof WalletNotConnectedError
+          ? error
+          : new WalletSignMessageError("The demo wallet could not sign this message");
+      this.emit("error", wrapped);
+      throw wrapped;
+    }
   }
 
   async signTransaction<T extends Transaction | VersionedTransaction>(transaction: T): Promise<T> {

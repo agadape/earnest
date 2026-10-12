@@ -67,7 +67,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const { data: campaigns, error } = usePolled(MINT ? load : null);
 
   // What is written on chain beside the campaigns: reactions, and the rooms creators built.
-  const { reactions, plots, reload: reloadNotes } = useNotes(campaigns);
+  const { reactions, plots, mine: reactedByMe, inDatabase, accept, reload: reloadNotes } = useNotes(campaigns);
   const reacted = useMemo(() => {
     const totals = new Map<string, number>();
     for (const [id, counts] of reactions) totals.set(id, counts.want + counts.clever + counts.watching);
@@ -685,7 +685,9 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
           onBack={() => select(null)}
           onCreator={(who) => select(CREATOR + who)}
           reactions={reactions.get(selected)}
-          onReacted={noted}
+          mine={reactedByMe}
+          inDatabase={inDatabase}
+          onReacted={(answer) => (answer ? accept(answer) : noted())}
           onPlace={open && viewer === open.campaign.creator.toBase58() ? () => place(selected) : undefined}
           hasRoom={plots.has(selected)}
           onMap={() => {
