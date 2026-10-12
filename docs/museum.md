@@ -159,6 +159,13 @@ Rooms follow the campaign's own state and nothing else:
   under the feet (`people.ts`). Objects still asking for backers turn slowly, but only in frames
   that were being drawn anyway, so a museum with nobody moving in it still costs nothing. The
   frame rate was not measured before or after.
+- **The look of the floor is set in two places.** Colours are in `palette.ts`; light, shadow,
+  the size of people, the printing of exhibits and the passes over the finished picture are in
+  `LOOK` at the top of `scene.ts`. The passes (shade where surfaces meet, a little glow) are
+  three.js's own and run only on a machine that is not modest; a machine that drops frames
+  loses them first, then sharpness, then shadows. An exhibit taking pledges is printed up to
+  the share of its seats that are taken. None of this was measured for speed, and none of the
+  motion was watched.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and

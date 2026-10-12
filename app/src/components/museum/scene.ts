@@ -9,6 +9,11 @@
  */
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
@@ -64,6 +69,16 @@ export const LOOK = {
   shadowMap: 2048,
   /** How many times life size the people are drawn, so they can be found at a glance. */
   people: 1.7,
+  /**
+   * The extra passes over the finished picture, on machines that are not modest: shade in
+   * corners and under things, and a little glow on what is bright. Set `post` to false to
+   * draw the picture plain.
+   */
+  post: true,
+  shadeRadius: 0.9,
+  shadeStrength: 1,
+  glow: 0.16,
+  glowAbove: 0.95,
   /** How long an exhibit takes to print itself up to where its seats are, in seconds. */
   printSeconds: 1.2,
   /** How bright the pool of light under an exhibit is, and under one still asking for backers. */
@@ -184,6 +199,8 @@ export class MuseumScene {
   // Exhibits still asking for backers are printed up to where their seats are. Each one here is
   // on its way from how full it was to how full it is; `printed` remembers the last, by id.
   private prints: Print[] = [];
+  // The passes over the finished picture, where the machine can afford them.
+  private composer: EffectComposer | null = null;
   private readonly printed = new Map<string, number>();
   // The name of each room, as a label over its far corner.
   private readonly roomTags: { room: Room; tag: HTMLDivElement; name: HTMLSpanElement }[] = [];
@@ -322,6 +339,7 @@ export class MuseumScene {
     this.scene.add(this.visitor);
     this.setVisitor(null);
 
+    if (LOOK.post && this.eased === 0) this.finish();
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(host);
     this.resize();
@@ -1103,6 +1121,27 @@ export class MuseumScene {
     this.dirty = true;
   }
 
+  /**
+   * Sets up the passes over the finished picture: the scene itself, shade where surfaces meet,
+   * a little glow on what is bright, and the step that turns it all into screen colours. The
+   * scene is drawn into a picture with smoothed edges, as it was without the passes.
+   */
+  private finish() {
+    const width = Math.max(1, this.host.clientWidth);
+    const height = Math.max(1, this.host.clientHeight);
+    const ratio = this.renderer.getPixelRatio();
+    const target = new THREE.WebGLRenderTarget(width * ratio, height * ratio, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(this.renderer, target);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    const shade = new GTAOPass(this.scene, this.camera, width, height);
+    shade.blendIntensity = LOOK.shadeStrength;
+    shade.updateGtaoMaterial({ radius: LOOK.shadeRadius, distanceExponent: 1.4, thickness: 1, scale: 1.2, samples: 12 });
+    composer.addPass(shade);
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), LOOK.glow, 0.6, LOOK.glowAbove));
+    composer.addPass(new OutputPass());
+    this.composer = composer;
+  }
+
   /** Stops drawing while something else covers the whole floor, and starts again after. */
   setPaused(paused: boolean) {
     this.paused = paused;
@@ -1129,6 +1168,9 @@ export class MuseumScene {
     this.eased += 1;
     if (this.eased === 1) {
       this.renderer.setPixelRatio(1);
+      // The passes over the picture are the first thing a struggling machine does without.
+      this.composer?.dispose();
+      this.composer = null;
       this.host.classList.add("museum-plain");
       this.resize();
     } else {
@@ -1294,6 +1336,7 @@ export class MuseumScene {
     const { clientWidth, clientHeight } = this.host;
     if (clientWidth === 0 || clientHeight === 0) return;
     this.renderer.setSize(clientWidth, clientHeight);
+    this.composer?.setSize(clientWidth, clientHeight);
     this.zoomGoal = Math.max(this.zoomGoal, this.minZoom());
     this.dirty = true;
   }
@@ -1393,7 +1436,8 @@ export class MuseumScene {
     this.camera.lookAt(centre);
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
 
     const readable = this.zoom > 16;
     // With signposts up, the usual small labels would only be in their way.
