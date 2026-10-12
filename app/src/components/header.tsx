@@ -25,9 +25,6 @@ export function Header() {
           {BRAND}
         </Link>
         <nav className="order-last flex w-full gap-6 text-sm text-paper/70 sm:order-none sm:w-auto">
-          <Link href="/" className="hover:text-lime">
-            Museum
-          </Link>
           <Link href="/?board=1" className="hover:text-lime">
             Campaign board
           </Link>

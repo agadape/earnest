@@ -27,6 +27,8 @@ const LIME = "#d8f59a";
 
 export const SKY = GRASS;
 export const FAR_WALL = 2.4;
+/** The wood round the museum: a square of trees this far each way from its middle. */
+export const FOREST = { x: 4, z: 1, half: 78 };
 const NEAR_WALL = 0.95;
 const THICK = 0.5;
 
@@ -241,9 +243,9 @@ export function buildWorld(scene: THREE.Scene) {
     }
   }
   const near = trees.length;
-  for (let tries = 0; tries < 900 && trees.length < near + 40; tries++) {
-    const x = -48 + random() * 100;
-    const z = -48 + random() * 100;
+  for (let tries = 0; tries < 6000 && trees.length < near + 700; tries++) {
+    const x = FOREST.x + (random() * 2 - 1) * FOREST.half;
+    const z = FOREST.z + (random() * 2 - 1) * FOREST.half;
     const onSquare = x > square.minX - 2 && x < square.maxX + 2 && z > square.minZ - 2 && z < square.maxZ + 2;
     const onPath = x < square.minX && Math.abs(z) < 4.2;
     if (!onSquare && !onPath && clear(x, z)) trees.push({ x, z, size: 1 + random() * 0.9 });
@@ -423,7 +425,8 @@ export function buildWorld(scene: THREE.Scene) {
     letter.position.set(room.x + room.width / 2 - 1.6, 1.35, room.z - room.depth / 2 + THICK / 2 + 0.05);
     scene.add(letter);
 
-    // Its name on a board outside the near corner, turned to face whoever is looking.
+    // Its name on a board over the far corner, turned to face whoever is looking. Up there
+    // nothing can stand in front of it: the view looks down from the opposite corner.
     const board = new THREE.Group();
     const face = new THREE.Mesh(
       new THREE.PlaneGeometry(4.6, 1.15),
@@ -439,13 +442,7 @@ export function buildWorld(scene: THREE.Scene) {
     back.position.set(0, 1.5, -0.07);
     back.castShadow = true;
     board.add(back, face);
-    for (const dx of [-1.9, 1.9]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.1, 0.14), woodDark);
-      leg.position.set(dx, 0.45, -0.07);
-      leg.castShadow = true;
-      board.add(leg);
-    }
-    board.position.set(room.x + room.width / 2 + 1.5, -0.4, room.z + room.depth / 2 + 1.5);
+    board.position.set(room.x - room.width / 2, FAR_WALL - 0.05, room.z - room.depth / 2);
     board.rotation.y = Math.PI / 4;
     scene.add(board);
 
@@ -478,13 +475,8 @@ export function buildWorld(scene: THREE.Scene) {
   plateBack.position.z = -0.08;
   plateBack.castShadow = true;
   plate.add(plateBack, nameplate);
-  for (const dx of [-2.4, 2.4]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.3, 0.16), woodDark);
-    leg.position.set(dx, -1.35, -0.08);
-    leg.castShadow = true;
-    plate.add(leg);
-  }
-  plate.position.set(-12.8, 1.6, -4.4);
+  // Over the gateway of the door, above everything that could cover it.
+  plate.position.set(ENTRANCE.x + ENTRANCE.width / 2, 4.15, ENTRANCE.z);
   plate.rotation.y = Math.PI / 4;
   scene.add(plate);
 

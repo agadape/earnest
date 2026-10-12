@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 import { standIn, standInMaterial } from "@/components/museum/objects";
-import { buildWorld, FAR_WALL, SKY } from "@/components/museum/world";
+import { buildWorld, FAR_WALL, FOREST, SKY } from "@/components/museum/world";
 import {
   canStand,
   type Exhibit,
@@ -37,7 +37,6 @@ const OFFSET = new THREE.Vector3(14, 12.5, 14);
 const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
 const SCREEN_UP = new THREE.Vector3(-1, 0, -1).normalize();
 const PITCH = Math.atan2(OFFSET.y, Math.hypot(OFFSET.x, OFFSET.z));
-const ZOOM_MIN = 11;
 const ZOOM_MAX = 84;
 const BOUNDS = { minX: -13, maxX: 23, minZ: -20, maxZ: 22 };
 const WALK = 5.2;
@@ -60,7 +59,7 @@ export interface SceneHandlers {
 export class MuseumScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+  private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 400);
   private readonly raycaster = new THREE.Raycaster();
   private readonly observer: ResizeObserver;
   private readonly labels: HTMLDivElement;
@@ -277,7 +276,7 @@ export class MuseumScene {
     const orange = this.own(new THREE.MeshStandardMaterial({ color: ORANGE, roughness: 0.6 }));
     const limeFlat = this.own(new THREE.MeshBasicMaterial({ color: LIME, transparent: true, opacity: 0.6 }));
 
-    // A pool of light on the floor under each exhibit: brightest in the middle, gone at the rim.
+    // A pool of light on the floor: brightest in the middle, gone at the rim. It does not move.
     const pool = document.createElement("canvas");
     pool.width = pool.height = 128;
     const context = pool.getContext("2d") as CanvasRenderingContext2D;
@@ -298,8 +297,7 @@ export class MuseumScene {
           blending: THREE.AdditiveBlending,
         }),
       );
-    const bright = lit(0.5);
-    const dim = lit(0.2);
+    const bright = lit(0.55);
 
     const plinthTall = this.keep(new THREE.BoxGeometry(1.3, 0.72, 1.3));
     const plinthLow = this.keep(new THREE.BoxGeometry(1.3, 0.34, 1.3));
@@ -349,7 +347,9 @@ export class MuseumScene {
       group.position.set(exhibit.x, 0, exhibit.z);
       this.places.set(exhibit.id, group.position.clone());
 
-      place(ended ? "pool-dim" : "pool", light, ended ? dim : bright, exhibit.x, 0.008, exhibit.z, false);
+      // A spotlight, and only on what is still asking for backers: light on everything is
+      // light on nothing.
+      if (status === "funding") place("pool", light, bright, exhibit.x, 0.02, exhibit.z, false);
 
       const height = ended ? 0.34 : 0.72;
       place("skirt", skirt, base, exhibit.x, 0.05, exhibit.z, false);
@@ -558,7 +558,7 @@ export class MuseumScene {
   overview() {
     this.following = false;
     this.goal.set(4.5, 0, 1);
-    this.zoomGoal = Math.max(ZOOM_MIN, this.fitZoom() * 0.45);
+    this.zoomGoal = Math.max(this.minZoom(), this.fitZoom() * 0.45);
   }
 
   /** Where the visitor stands, to tell the others. */
@@ -729,7 +729,7 @@ export class MuseumScene {
   }
 
   zoomBy(factor: number) {
-    this.zoomGoal = THREE.MathUtils.clamp(this.zoomGoal * factor, ZOOM_MIN, ZOOM_MAX);
+    this.zoomGoal = THREE.MathUtils.clamp(this.zoomGoal * factor, this.minZoom(), ZOOM_MAX);
   }
 
   /** Moves the view by a distance on screen, in pixels, and stops following the visitor. */
@@ -848,13 +848,34 @@ export class MuseumScene {
     // How wide and tall the room's floor is once seen from this angle.
     const across = (room.width + room.depth) / Math.SQRT2;
     const down = ((room.width + room.depth) / Math.SQRT2) * Math.sin(PITCH) + FAR_WALL * Math.cos(PITCH);
-    return THREE.MathUtils.clamp(Math.min(width / (across + 2), height / (down + 2.5)), ZOOM_MIN, ZOOM_MAX);
+    return THREE.MathUtils.clamp(Math.min(width / (across + 2), height / (down + 2.5)), this.minZoom(), ZOOM_MAX);
+  }
+
+  /**
+   * The furthest out the view may go: far enough for the whole building, never so far that
+   * the edge of the wood comes into the picture, wherever the view has been dragged to.
+   */
+  private minZoom() {
+    const { clientWidth, clientHeight } = this.host;
+    // Seen from this corner the wood is a diamond; this is how far from its middle the
+    // view's own middle can get, measured the same way.
+    const strayed =
+      Math.SQRT2 *
+      Math.max(
+        FOREST.x - BOUNDS.minX,
+        BOUNDS.maxX - FOREST.x,
+        FOREST.z - BOUNDS.minZ,
+        BOUNDS.maxZ - FOREST.z,
+      );
+    const room = FOREST.half * Math.SQRT2 - strayed - 6;
+    return (clientWidth / 2 + clientHeight / 2 / Math.sin(PITCH)) / room;
   }
 
   private resize() {
     const { clientWidth, clientHeight } = this.host;
     if (clientWidth === 0 || clientHeight === 0) return;
     this.renderer.setSize(clientWidth, clientHeight);
+    this.zoomGoal = Math.max(this.zoomGoal, this.minZoom());
     this.dirty = true;
   }
 
@@ -939,7 +960,7 @@ export class MuseumScene {
     this.camera.right = width / this.zoom / 2;
     this.camera.top = height / this.zoom / 2;
     this.camera.bottom = -height / this.zoom / 2;
-    this.camera.position.copy(centre).addScaledVector(OFFSET, 3);
+    this.camera.position.copy(centre).addScaledVector(OFFSET, 6);
     this.camera.lookAt(centre);
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
