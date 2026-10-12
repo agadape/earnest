@@ -159,6 +159,15 @@ Rooms follow the campaign's own state and nothing else:
   under the feet (`people.ts`). Objects still asking for backers turn slowly, but only in frames
   that were being drawn anyway, so a museum with nobody moving in it still costs nothing. The
   frame rate was not measured before or after.
+- **The floor is drawn as a cartoon, and a seat taken is a show.** Light falls in three flat
+  bands (`toon.ts`) and a pass over the picture inks a line wherever depth jumps or a surface
+  turns (`outline.ts`); glass, drawings and light are left out of it. When a campaign has more
+  seats than at the last look, the floor celebrates at its exhibit (`celebrations.ts`) and a
+  line at the top right says so. Who took the seat is not known from that reading and is not
+  said. An exhibit whose seats all fill flies to the Workshop, which is where the program puts
+  it; one that got made flies on to the Realized Wing. `/?debug=events` adds a panel that
+  rehearses each show without touching anything, and says so in what it prints. None of the
+  motion has been watched: the browser used for checking does not run frames.
 - **The look of the floor is set in two places.** Colours are in `palette.ts`; light, shadow,
   the size of people, the printing of exhibits and the passes over the finished picture are in
   `LOOK` at the top of `scene.ts`. The passes (shade where surfaces meet, a little glow) are

@@ -673,28 +673,7 @@ export function buildWorld(scene: THREE.Scene) {
   }
 
   // ----- Dressing -------------------------------------------------------------------------
-  // Bunting along the top of the tall walls, on the side that faces into each room. It skips
-  // the gateways.
-  const flags = [PALETTE.brand, PALETTE.lime, PALETTE.paper].map((color) => matte(color, 0.8));
-  for (const room of ROOMS) {
-    const north = room.z - room.depth / 2;
-    const west = room.x - room.width / 2;
-    let flag = 0;
-    for (let x = west + 0.95; x < room.x + room.width / 2 - 0.6; x += 0.85) {
-      const gate = CORRIDORS.some(
-        (corridor) => corridor.along === "z" && Math.abs(corridor.x - x) < corridor.width / 2 + 0.3 && Math.abs(corridor.z - north) < corridor.depth / 2 + 0.1,
-      );
-      if (!gate) slab(0.3, 0.32 - (flag % 2) * 0.1, 0.03, x, FAR_WALL - 0.2, north + THICK / 2 + 0.03, flags[flag % flags.length], false);
-      flag += 1;
-    }
-    for (let z = north + 0.95; z < room.z + room.depth / 2 - 0.6; z += 0.85) {
-      const gate = CORRIDORS.some(
-        (corridor) => corridor.along === "x" && Math.abs(corridor.z - z) < corridor.depth / 2 + 0.3 && Math.abs(corridor.x - west) < corridor.width / 2 + 0.1,
-      );
-      if (!gate) slab(0.03, 0.32 - (flag % 2) * 0.1, 0.3, west + THICK / 2 + 0.03, FAR_WALL - 0.2, z, flags[flag % flags.length], false);
-      flag += 1;
-    }
-  }
+  // No bunting: with a line drawn round every shape, a row of small flags is a row of noise.
 
   // Flowers on the lawns, in clumps between the trees. One mesh for all of them.
   const petals = ["#ffffff", "#ffe08a", PALETTE.lime];

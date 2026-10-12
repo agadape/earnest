@@ -10,14 +10,17 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
+import { Celebrations } from "@/components/museum/celebrations";
 import { standIn, standInMaterial } from "@/components/museum/objects";
+import { InkPass, NO_INK } from "@/components/museum/outline";
 import { person } from "@/components/museum/people";
+import { toonify, toonMaterial } from "@/components/museum/toon";
+import { VISUAL as LOOK } from "@/components/museum/visual-config";
 import { PALETTE } from "@/components/museum/palette";
 import { buildWorld, FAR_WALL, ISLAND } from "@/components/museum/world";
 import {
@@ -54,37 +57,6 @@ const WALK = 5.2;
 const STRIDE = 11;
 const NEAR = 2.9;
 const START = { x: -6.4, z: 0 };
-/**
- * Everything about how the floor is lit that is worth tuning by eye, in one place.
- */
-export const LOOK = {
-  exposure: 1.1,
-  sky: "#cfe3ff",
-  ground: "#8a7a5a",
-  skyLight: 0.85,
-  sun: "#fff1d6",
-  sunLight: 3.4,
-  /** How much the metal and glass reflect of the room made for them. */
-  reflections: 0.16,
-  shadowMap: 2048,
-  /** How many times life size the people are drawn, so they can be found at a glance. */
-  people: 1.7,
-  /**
-   * The extra passes over the finished picture, on machines that are not modest: shade in
-   * corners and under things, and a little glow on what is bright. Set `post` to false to
-   * draw the picture plain.
-   */
-  post: true,
-  shadeRadius: 0.9,
-  shadeStrength: 1,
-  glow: 0.16,
-  glowAbove: 0.95,
-  /** How long an exhibit takes to print itself up to where its seats are, in seconds. */
-  printSeconds: 1.2,
-  /** How bright the pool of light under an exhibit is, and under one still asking for backers. */
-  pool: 0.2,
-  poolAsking: 0.55,
-};
 // The most figures a crowd is drawn with, however many reactions there are.
 const CROWD_MOST = 10;
 const CROWD_SHIRTS = ["#e4572e", "#17bebb", "#ffc914", "#76b041", "#5b5f97", "#ff8cc6", "#2e86ab", "#f4f1de"];
@@ -177,7 +149,7 @@ export class MuseumScene {
 
   // The visitor: where they are, where they are walking to, and which keys are held.
   private readonly visitor = new THREE.Group();
-  private readonly visitorBody: THREE.MeshStandardMaterial;
+  private readonly visitorBody: THREE.MeshToonMaterial;
   private readonly visitorHalo: THREE.Mesh;
   private readonly visitorTag: HTMLDivElement;
   private path: [number, number][] = [];
@@ -199,6 +171,15 @@ export class MuseumScene {
   // Exhibits still asking for backers are printed up to where their seats are. Each one here is
   // on its way from how full it was to how full it is; `printed` remembers the last, by id.
   private prints: Print[] = [];
+  // Which toon material each ordinary one became.
+  private readonly toons = new Map<THREE.Material, THREE.Material>();
+  // How high each exhibit's plinth is, by id.
+  private readonly tops = new Map<string, number>();
+  private readonly topOf = (id: string) => this.tops.get(id) ?? 0.8;
+  // What plays when a seat is taken, and the exhibits on their way to a new room.
+  private readonly cheers: Celebrations;
+  private readonly flights = new Map<string, { x: number; y: number; z: number; spent: number; words: string }>();
+  private festive = false;
   // The passes over the finished picture, where the machine can afford them.
   private composer: EffectComposer | null = null;
   private readonly printed = new Map<string, number>();
@@ -226,7 +207,7 @@ export class MuseumScene {
     // most of what makes this heavy, and at this distance a little over one is enough.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // Shadows are drawn once, when the exhibits are hung: nothing that casts one moves.
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = true;
@@ -282,9 +263,9 @@ export class MuseumScene {
     sun.target.position.set(17, 0, 1);
     sun.castShadow = true;
     sun.shadow.mapSize.set(LOOK.shadowMap, LOOK.shadowMap);
-    sun.shadow.bias = -0.0003;
-    sun.shadow.normalBias = 0.03;
-    sun.shadow.radius = 3;
+    sun.shadow.bias = LOOK.shadowBias;
+    sun.shadow.normalBias = LOOK.shadowNormalBias;
+    sun.shadow.radius = LOOK.shadowSoftness;
     this.scene.add(sun, sun.target);
     // The shadow's own camera is fitted to the building and no more, so that the whole of its
     // picture is spent on what casts and catches shadows.
@@ -312,6 +293,11 @@ export class MuseumScene {
 
     buildWorld(this.scene);
     this.buildStations();
+    toonify(this.scene, this.toons);
+    this.noInkOnGlass(this.scene);
+    // The camera sees both what is outlined and what is not.
+    this.camera.layers.enable(NO_INK);
+    this.cheers = new Celebrations(this.scene, this.labels, this.camera, host, this.eased === 0 ? 1 : 0.35, calm);
     this.scene.add(this.exhibitRoot, this.plotRoot);
 
     const ring = new THREE.RingGeometry(1.0, 1.12, 56);
@@ -322,18 +308,20 @@ export class MuseumScene {
     );
     this.selectRing = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: LIME }));
     for (const mesh of [this.hoverRing, this.selectRing]) {
+      mesh.layers.set(NO_INK);
       mesh.position.y = 0.03;
       mesh.visible = false;
       this.scene.add(mesh);
     }
 
-    this.visitorBody = new THREE.MeshStandardMaterial({ color: "#a6aaa0", roughness: 0.6 });
+    this.visitorBody = toonMaterial({ color: "#a6aaa0" });
     // A little taller than everyone else, so the eye finds them.
     const self = person(this.visitorBody, 1, LOOK.people * 1.12);
     const halo = new THREE.RingGeometry(0.3 * LOOK.people, 0.3 * LOOK.people + 0.1, 40);
     halo.rotateX(-Math.PI / 2);
     this.visitorHalo = new THREE.Mesh(halo, new THREE.MeshBasicMaterial({ color: LIME }));
     this.visitorHalo.position.y = 0.03;
+    this.visitorHalo.layers.set(NO_INK);
     this.visitor.add(...self.children, this.visitorHalo);
     this.visitor.position.set(START.x, 0, START.z);
     this.scene.add(this.visitor);
@@ -371,6 +359,14 @@ export class MuseumScene {
 
   /** Replaces every exhibit. Cheap enough to do whenever a campaign changes. */
   setExhibits(exhibits: Exhibit[]) {
+    // Where everything stood and what state it was in, to tell what has moved on.
+    const before = new Map(this.hung.map((exhibit) => [exhibit.id, exhibit]));
+    const beforeTops = new Map(this.tops);
+    this.tops.clear();
+    for (const material of this.exhibitMaterials) {
+      this.toons.get(material)?.dispose();
+      this.toons.delete(material);
+    }
     this.exhibitRoot.clear();
     for (const geometry of this.exhibitGeometry) geometry.dispose();
     for (const material of this.exhibitMaterials) {
@@ -577,6 +573,7 @@ export class MuseumScene {
       object.userData.material = material;
       object.userData.rest = material.emissiveIntensity;
       object.userData.base = top;
+      this.tops.set(exhibit.id, top);
       object.userData.turns = status === "funding";
       object.userData.lifts = status !== "funding";
       group.add(object);
@@ -740,6 +737,30 @@ export class MuseumScene {
       mesh.receiveShadow = true;
       this.exhibitRoot.add(mesh);
     }
+    toonify(this.exhibitRoot, this.toons);
+    this.noInkOnGlass(this.exhibitRoot);
+    for (const object of this.objects.values()) {
+      // The body is the first part; it is what lights up when pointed at.
+      object.userData.material = (object.children[0] as THREE.Mesh).material;
+    }
+    // An exhibit whose seats all filled, or that got made, flies from where it stood to its
+    // new room instead of blinking there.
+    for (const exhibit of exhibits) {
+      const was = before.get(exhibit.id);
+      if (!was || was.status === exhibit.status || this.calm) continue;
+      const movedOn =
+        (was.status === "funding" && exhibit.status === "building") ||
+        (was.status === "building" && exhibit.status === "completed");
+      if (!movedOn || Math.hypot(was.x - exhibit.x, was.z - exhibit.z) < 1) continue;
+      this.flights.set(exhibit.id, {
+        x: was.x,
+        y: beforeTops.get(exhibit.id) ?? 0.8,
+        z: was.z,
+        spent: 0,
+        words: exhibit.status === "building" ? "Every seat taken!" : "It got made!",
+      });
+    }
+    this.fly(0);
     this.renderer.shadowMap.needsUpdate = true;
     this.print(0);
 
@@ -766,6 +787,75 @@ export class MuseumScene {
       if (along < 1) busy = true;
     }
     return busy;
+  }
+
+  /** Takes what is see-through, and every line, out of the outline: glass, drawings, light. */
+  private noInkOnGlass(root: THREE.Object3D) {
+    root.traverse((child) => {
+      if (child instanceof THREE.LineSegments) child.layers.set(NO_INK);
+      else if (child instanceof THREE.Mesh && !Array.isArray(child.material) && (child.material as THREE.Material).transparent) {
+        child.layers.set(NO_INK);
+      }
+    });
+  }
+
+  /**
+   * Moves every exhibit that is on its way to a new room: up off where it stood, over the
+   * walls in an arc, and down onto its new plinth, where it is cheered. Says whether any is
+   * still in the air.
+   */
+  private fly(seconds: number): boolean {
+    for (const [id, flight] of this.flights) {
+      const object = this.objects.get(id);
+      const home = this.places.get(id);
+      if (!object || !home) {
+        this.flights.delete(id);
+        continue;
+      }
+      flight.spent += seconds;
+      const base = object.userData.base as number;
+      const along = Math.min(1, flight.spent / LOOK.flightSeconds);
+      const eased = along < 0.5 ? 4 * along * along * along : 1 - Math.pow(-2 * along + 2, 3) / 2;
+      const left = 1 - eased;
+      object.position.set(
+        (flight.x - home.x) * left,
+        base + (flight.y - base) * left + Math.sin(Math.PI * eased) * LOOK.flightHeight,
+        (flight.z - home.z) * left,
+      );
+      object.rotation.y += seconds * 3;
+      if (along >= 1) {
+        object.position.set(0, base, 0);
+        this.flights.delete(id);
+        this.cheers.cheer({ id, words: flight.words, mine: false, grand: true }, 0, () => flight.words);
+      }
+    }
+    return this.flights.size > 0;
+  }
+
+  /**
+   * Celebrates a seat being taken at an exhibit. `words` writes what floats over it from the
+   * total, since pledges that come close together are added up. Nothing here touches the
+   * campaign; it is a show put on about something that already happened.
+   */
+  celebrate(id: string, amount: number, mine: boolean, words: (total: number) => string) {
+    this.cheers.cheer({ id, words: words(amount), mine }, amount, words);
+    this.dirty = true;
+  }
+
+  /** Turns the camera to an exhibit and comes in close, without opening it. */
+  flyTo(id: string) {
+    const place = this.places.get(id);
+    if (!place) return;
+    this.following = false;
+    this.goal.copy(place);
+    this.zoomGoal = Math.max(this.zoomGoal, Math.min(52, this.fitZoom() * 1.5));
+  }
+
+  /** For trying things out: flies an exhibit in from the door and cheers it, changing nothing. */
+  rehearseFlight(id: string) {
+    if (!this.objects.has(id)) return;
+    this.flights.set(id, { x: START.x, y: 0.8, z: START.z, spent: 0, words: "Every seat taken! (a rehearsal)" });
+    this.dirty = true;
   }
 
   /** Lights what is pointed at, stood next to or open, and rings it. */
@@ -883,10 +973,7 @@ export class MuseumScene {
     for (const entry of list) {
       let other = this.others.get(entry.id);
       if (!other) {
-        const material = new THREE.MeshStandardMaterial({
-          color: entry.wallet ? "#8ecae6" : "#c9c5b8",
-          roughness: 0.6,
-        });
+        const material = toonMaterial({ color: entry.wallet ? "#8ecae6" : "#c9c5b8" });
         let variant = 0;
         for (const letter of entry.id) variant = (variant * 31 + letter.charCodeAt(0)) % 9973;
         const figure = person(material, variant, LOOK.people);
@@ -923,7 +1010,7 @@ export class MuseumScene {
       // The same wallet always wears the same colour and starts in the same room.
       let sum = 0;
       for (const letter of entry.id) sum = (sum * 31 + letter.charCodeAt(0)) % 9973;
-      const cloth = new THREE.MeshStandardMaterial({ color: CROWD_SHIRTS[sum % CROWD_SHIRTS.length], roughness: 0.8 });
+      const cloth = toonMaterial({ color: CROWD_SHIRTS[sum % CROWD_SHIRTS.length] });
       const figure = person(cloth, sum, LOOK.people * 0.94);
       const room = ROOMS[(sum + index) % ROOMS.length];
       const start = this.somewhere(room);
@@ -957,6 +1044,8 @@ export class MuseumScene {
     for (const wanderer of this.wanderers.values()) {
       const { figure } = wanderer;
       const at = { x: figure.position.x, z: figure.position.z };
+      const hop = this.cheers.hop(at.x, at.z);
+      if (hop > 0) figure.position.y = hop;
       if (wanderer.wait > 0) {
         wanderer.wait -= seconds;
         if (wanderer.wait <= 0) {
@@ -1107,6 +1196,7 @@ export class MuseumScene {
       const mesh = new THREE.Mesh(this.plotShape, index === chosen ? this.plotChosen : this.plotFree);
       mesh.position.set(plot.x, 0.1, plot.z);
       mesh.userData.exhibit = `@plot:${index}`;
+      mesh.layers.enable(NO_INK);
       this.plotRoot.add(mesh);
       this.plotPick.push(mesh);
       // Its number, the same one the plan beside the floor uses.
@@ -1122,8 +1212,8 @@ export class MuseumScene {
   }
 
   /**
-   * Sets up the passes over the finished picture: the scene itself, shade where surfaces meet,
-   * a little glow on what is bright, and the step that turns it all into screen colours. The
+   * Sets up the passes over the finished picture: the scene itself, the ink line round every
+   * shape, a little glow on what is bright, and the step that turns it all into screen colours. The
    * scene is drawn into a picture with smoothed edges, as it was without the passes.
    */
   private finish() {
@@ -1133,10 +1223,7 @@ export class MuseumScene {
     const target = new THREE.WebGLRenderTarget(width * ratio, height * ratio, { type: THREE.HalfFloatType, samples: 4 });
     const composer = new EffectComposer(this.renderer, target);
     composer.addPass(new RenderPass(this.scene, this.camera));
-    const shade = new GTAOPass(this.scene, this.camera, width, height);
-    shade.blendIntensity = LOOK.shadeStrength;
-    shade.updateGtaoMaterial({ radius: LOOK.shadeRadius, distanceExponent: 1.4, thickness: 1, scale: 1.2, samples: 12 });
-    composer.addPass(shade);
+    composer.addPass(new InkPass(this.scene, this.camera, width, height, ratio));
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), LOOK.glow, 0.6, LOOK.glowAbove));
     composer.addPass(new OutputPass());
     this.composer = composer;
@@ -1364,6 +1451,7 @@ export class MuseumScene {
       this.drag !== null ||
       this.astir ||
       this.printing ||
+      this.festive ||
       this.target.distanceToSquared(this.goal) > 1e-4 ||
       Math.abs(this.zoom - this.zoomGoal) > 0.02;
     // Nothing moved and nothing changed: the picture on screen is still the right one.
@@ -1382,6 +1470,9 @@ export class MuseumScene {
     this.clock += seconds;
     if (strolling) this.stroll(seconds);
     this.printing = this.print(seconds);
+    const flying = this.fly(seconds);
+    this.cheers.update(seconds, this.places, this.topOf);
+    this.festive = flying || this.cheers.busy;
 
     const walked = this.walk(seconds);
     const position = this.visitor.position;
@@ -1490,7 +1581,7 @@ export class MuseumScene {
       if (moving) this.astir = true;
       figure.x += (other.x - figure.x) * pull;
       figure.z += (other.z - figure.z) * pull;
-      figure.y = moving && !this.calm ? Math.abs(Math.sin(this.clock * 11)) * 0.04 : 0;
+      figure.y = (moving && !this.calm ? Math.abs(Math.sin(this.clock * 11)) * 0.04 : 0) + this.cheers.hop(figure.x, figure.z);
       const at = this.project(figure.x, 0.95 * LOOK.people + 0.15, figure.z);
       other.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
     }
@@ -1609,6 +1700,8 @@ export class MuseumScene {
         }
       }
     });
+    this.cheers.dispose();
+    this.composer?.dispose();
     this.renderer.dispose();
     // Hand the graphics context back at once: a browser only allows a handful, and a page that
     // is left and returned to must not run out.

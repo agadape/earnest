@@ -202,6 +202,10 @@ function PledgeAction({ campaign }: { campaign: Campaign }) {
             pending: `Pledging ${usd(campaign.price)}`,
             done: `You pledged ${usd(campaign.price)}. Your seat is taken.`,
             build: async (payer) => [[await pledgeIx(program, campaign, payer)]],
+          }).then((pledged) => {
+            // Nothing about the pledge changes here. The museum floor is only told that this
+            // browser's own pledge went through, so it can make a show of it.
+            if (pledged) window.dispatchEvent(new CustomEvent("earnest:pledged", { detail: campaign.address.toBase58() }));
           })
         }
       >

@@ -6,6 +6,9 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
+import { NO_INK } from "@/components/museum/outline";
+import { toonMaterial } from "@/components/museum/toon";
+
 const SKINS = ["#f1c9a5", "#d9a37a", "#b97a56", "#8d5a3b"];
 const HAIRS = ["#2b211b", "#5a3a26", "#c9a24a", "#8f8a7c"];
 const TROUSERS = "#3b3f4a";
@@ -44,7 +47,7 @@ function rest(variant: number): THREE.BufferGeometry {
 
 let shirt: THREE.BufferGeometry | null = null;
 let blob: THREE.BufferGeometry | null = null;
-let bodyPaint: THREE.MeshStandardMaterial | null = null;
+let bodyPaint: THREE.MeshToonMaterial | null = null;
 let shade: THREE.MeshBasicMaterial | null = null;
 
 /**
@@ -55,7 +58,7 @@ let shade: THREE.MeshBasicMaterial | null = null;
 export function person(cloth: THREE.Material, variant: number, size = 1): THREE.Group {
   shirt ??= new THREE.CylinderGeometry(0.135, 0.165, 0.32, 12).translate(0, 0.41, 0);
   blob ??= new THREE.CircleGeometry(0.26, 20).rotateX(-Math.PI / 2);
-  bodyPaint ??= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+  bodyPaint ??= toonMaterial({ vertexColors: true });
   shade ??= new THREE.MeshBasicMaterial({ color: "#1c140c", transparent: true, opacity: 0.28, depthWrite: false });
 
   const puppet = new THREE.Group();
@@ -63,6 +66,7 @@ export function person(cloth: THREE.Material, variant: number, size = 1): THREE.
   puppet.scale.setScalar(size);
   const shadow = new THREE.Mesh(blob, shade);
   shadow.position.y = 0.075;
+  shadow.layers.enable(NO_INK);
   shadow.scale.setScalar(size);
   const group = new THREE.Group();
   group.add(puppet, shadow);

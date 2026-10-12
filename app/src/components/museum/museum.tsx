@@ -15,7 +15,7 @@ import { Cutscene, SCENES } from "@/components/museum/cutscene";
 import { useNotes } from "@/components/museum/use-notes";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
-import { formatDuration, shortAddress } from "@/lib/format";
+import { formatDuration, shortAddress, usd } from "@/lib/format";
 import { arrange, type Exhibit, type Look, ROOM_FLOORS, type RoomId, ROOMS, STATIONS, STATUS_WORDS, stored } from "@/lib/museum/plan";
 import { buildEnd, fetchCampaigns } from "@/lib/tanda-jadi";
 
@@ -27,6 +27,8 @@ const CREATOR = "@creator:";
 const INTRO_SEEN = "earnest:intro-seen";
 // Set once the line of controls has been shown.
 const HINTED = "earnest:hinted";
+/** A whole number from zero up to, not including, `below`. Only rehearsals roll dice. */
+const roll = (below: number) => Math.floor(Math.random() * below);
 const PANEL_OF: Record<string, Panel> = { "@board": "board", "@desk": "design" };
 
 /** One line under an exhibit's name: what state it is in, in words, and how full it is. */
@@ -148,6 +150,65 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   // Whether the words about the room are laid over the left of the floor. Folded away, only
   // the room's name is left, and the floor is all picture.
   const [notes, setNotes] = useState(false);
+  // A line for each seat just taken, stacked at the top right; pressing one goes to the exhibit.
+  const [news, setNews] = useState<{ key: number; id: string; text: string }[]>([]);
+  const newsKey = useRef(0);
+  const tell = useCallback((id: string, text: string) => {
+    const key = (newsKey.current += 1);
+    setNews((list) => [...list.slice(-3), { key, id, text }]);
+    setTimeout(() => setNews((list) => list.filter((entry) => entry.key !== key)), 7000);
+  }, []);
+  // Campaigns this browser itself just pledged to, so its own pledge is told apart from others'.
+  const mineJustNow = useRef(new Map<string, number>());
+  useEffect(() => {
+    const onPledged = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (typeof id === "string") mineJustNow.current.set(id, Date.now());
+    };
+    window.addEventListener("earnest:pledged", onPledged);
+    return () => window.removeEventListener("earnest:pledged", onPledged);
+  }, []);
+  // How many seats each campaign had at the last look. A campaign that has more now had a seat
+  // taken, by this visitor or by someone else, and the floor makes a show of it. This only reads.
+  const seatsBefore = useRef<Map<string, number> | null>(null);
+  useEffect(() => {
+    if (!campaigns) return;
+    const seats = new Map(campaigns.map((campaign) => [campaign.address.toBase58(), campaign.backers]));
+    const before = seatsBefore.current;
+    seatsBefore.current = seats;
+    if (!before) return;
+    for (const campaign of campaigns) {
+      const id = campaign.address.toBase58();
+      const had = before.get(id);
+      if (had === undefined || campaign.backers <= had) continue;
+      const taken = campaign.backers - had;
+      const told = mineJustNow.current.get(id);
+      const mine = told !== undefined && Date.now() - told < 30_000;
+      if (mine) mineJustNow.current.delete(id);
+      const price = campaign.price;
+      scene.current?.celebrate(id, taken, mine, (total) => `+${usd(price * BigInt(total))}`);
+      const title = campaign.title || "an untitled campaign";
+      const amount = usd(price * BigInt(taken));
+      tell(id, mine ? `You took a seat in ${title} · ${amount}` : `${taken === 1 ? "A seat was" : `${taken} seats were`} taken in ${title} · ${amount}`);
+      if (mine) scene.current?.flyTo(id);
+    }
+  }, [campaigns, tell]);
+  // For trying the shows out without touching anything: `?debug=events`.
+  const rehearsing = params.get("debug") === "events";
+  const rehearse = (what: "mine" | "theirs" | "flight" | "burst") => {
+    const all = museum?.exhibits ?? [];
+    const target = all.find((exhibit) => exhibit.id === near) ?? all.find((exhibit) => exhibit.status === "funding") ?? all[0];
+    if (!target) return;
+    const cheer = (exhibit: Exhibit, mine: boolean) => {
+      const dollars = 5 + roll(46);
+      scene.current?.celebrate(exhibit.id, dollars, mine, (total) => `+$${total}.00`);
+      tell(exhibit.id, `Rehearsal, nothing was pledged: ${mine ? "you" : "someone"} · ${exhibit.campaign.title || "untitled"} · $${dollars}.00`);
+    };
+    if (what === "mine") cheer(target, true);
+    else if (what === "theirs") cheer(target, false);
+    else if (what === "flight") scene.current?.rehearseFlight(target.id);
+    else for (let index = 0; index < 10; index++) cheer(all[roll(Math.min(all.length, 6))], false);
+  };
   // The dock's two small panels, and the line of controls shown to a first-time visitor.
   const [help, setHelp] = useState(false);
   const [more, setMore] = useState(false);
@@ -257,7 +318,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       setPlacing(id);
       setChosen(null);
     },
-    [select],
+    [select, setPlacing, setChosen],
   );
 
   // A link can ask for an exhibit, a creator's file, the board or the desk. Links in the
@@ -511,7 +572,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const endIntro = useCallback(() => {
     setIntro(null);
     scene.current?.focusRoom("unmade");
-  }, []);
+  }, [setIntro]);
 
   // Walking is done with the keyboard anywhere on the page, except while something is being
   // typed or a control has the keys: a button's own Enter and a text box's letters come first.
@@ -887,6 +948,39 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
         </div>
       </div>
 
+      {news.length > 0 && !selected && !panel && intro === null && (
+        <ul aria-live="polite" className="pointer-events-none absolute right-4 top-4 z-10 flex max-w-[min(24rem,80vw)] flex-col items-end gap-2">
+          {news.map((entry) => (
+            <li key={entry.key}>
+              <button
+                type="button"
+                onClick={() => scene.current?.flyTo(entry.id)}
+                className="build-nudge pointer-events-auto rounded-2xl border-2 border-carbon bg-lime px-4 py-2 text-left text-sm font-semibold leading-5 text-carbon shadow-lg hover:bg-white"
+              >
+                {entry.text}
+                <span className="block text-[11px] font-medium opacity-70">Show me where</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rehearsing && !covered && (
+        <div className="museum-dock museum-dock-panel pointer-events-auto absolute left-4 top-16 z-10 flex flex-col gap-1 p-2 text-xs text-paper">
+          <p className="px-2 pt-1 font-semibold text-lime">Rehearsal · changes nothing</p>
+          {(
+            [
+              ["mine", "My pledge"],
+              ["theirs", "Someone's pledge"],
+              ["flight", "Every seat taken"],
+              ["burst", "Ten at once"],
+            ] as const
+          ).map(([what, label]) => (
+            <button key={what} type="button" onClick={() => rehearse(what)} className="rounded-lg px-3 py-1.5 text-left hover:bg-paper/10">
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {roomless && reminded && !covered && (
         <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center px-4">
           <div
