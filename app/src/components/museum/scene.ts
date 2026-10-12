@@ -23,6 +23,7 @@ import {
   seatMarkers,
   standBy,
   STATUS_WORDS,
+  STATIONS,
   stepFrom,
 } from "@/lib/museum/plan";
 
@@ -78,6 +79,12 @@ export class MuseumScene {
   private exhibitMaterials: THREE.Material[] = [];
   private pickable: THREE.Object3D[] = [];
   private hung: Exhibit[] = [];
+  // Everything on the floor a walker has to go round: the exhibits and the two stations.
+  private blocked: { x: number; z: number }[] = [...STATIONS];
+  private readonly stationPick: THREE.Object3D[] = [];
+  private readonly stationTags: HTMLDivElement[] = [];
+  // Other people in the museum right now, as the server last reported them.
+  private readonly others = new Map<string, { figure: THREE.Group; tag: HTMLDivElement; x: number; z: number }>();
   private readonly objects = new Map<string, THREE.Object3D>();
   private readonly places = new Map<string, THREE.Vector3>();
   private readonly tags = new Map<string, HTMLDivElement>();
@@ -147,7 +154,8 @@ export class MuseumScene {
     this.scene.add(sun, sun.target);
 
     buildWorld(this.scene);
-    this.strollers = new Strollers(this.scene, calm ? 0 : 14);
+    this.strollers = new Strollers(this.scene, calm ? 0 : 10);
+    this.buildStations();
     this.scene.add(this.exhibitRoot);
 
     const ring = new THREE.RingGeometry(1.0, 1.12, 56);
@@ -223,6 +231,7 @@ export class MuseumScene {
     this.places.clear();
     this.tags.clear();
     this.hung = exhibits;
+    this.blocked = [...exhibits, ...STATIONS];
 
     const paper = this.own(new THREE.MeshStandardMaterial({ color: "#f7f1e1", roughness: 0.7 }));
     const base = this.own(new THREE.MeshStandardMaterial({ color: "#6b4a32", roughness: 0.7 }));
@@ -459,14 +468,17 @@ export class MuseumScene {
 
     // What was pointed at may be gone. A visitor standing where a plinth now is steps aside.
     if (this.pointed && !this.places.has(this.pointed)) this.pointed = null;
-    if (!canStand(this.visitor.position.x, this.visitor.position.z, this.hung)) this.stepAside();
+    if (!canStand(this.visitor.position.x, this.visitor.position.z, this.blocked)) this.stepAside();
     this.light();
   }
 
   /** Lights what is pointed at, stood next to or open, and rings it. */
   private light() {
     this.hot = this.pointed ?? this.near;
-    const hot = this.hot && this.hot !== this.selected ? this.places.get(this.hot) : undefined;
+    const hot =
+      this.hot && this.hot !== this.selected
+        ? (this.places.get(this.hot) ?? STATIONS.find((station) => station.id === this.hot))
+        : undefined;
     this.hoverRing.visible = Boolean(hot);
     if (hot) this.hoverRing.position.set(hot.x, 0.03, hot.z);
     const open = this.selected ? this.places.get(this.selected) : undefined;
@@ -519,6 +531,129 @@ export class MuseumScene {
     this.following = false;
     this.goal.set(4.5, 0, 1);
     this.zoomGoal = Math.max(ZOOM_MIN, this.fitZoom() * 0.45);
+  }
+
+  /** Where the visitor stands, to tell the others. */
+  whereabouts(): { x: number; z: number } {
+    return { x: this.visitor.position.x, z: this.visitor.position.z };
+  }
+
+  /** Shows everyone else who is in the museum now. Figures appear, move and leave with the list. */
+  setOthers(list: { id: string; name: string; wallet: boolean; x: number; z: number }[]) {
+    const present = new Set(list.map((entry) => entry.id));
+    for (const [id, other] of this.others) {
+      if (present.has(id)) continue;
+      this.scene.remove(other.figure);
+      other.tag.remove();
+      this.others.delete(id);
+    }
+    for (const entry of list) {
+      let other = this.others.get(entry.id);
+      if (!other) {
+        const material = new THREE.MeshStandardMaterial({
+          color: entry.wallet ? "#8ecae6" : "#c9c5b8",
+          roughness: 0.6,
+        });
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.5, 16), material);
+        body.position.y = 0.25;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 12), material);
+        head.position.y = 0.64;
+        body.castShadow = head.castShadow = true;
+        const figure = new THREE.Group();
+        figure.add(body, head);
+        figure.position.set(entry.x, 0, entry.z);
+        this.scene.add(figure);
+        const tag = document.createElement("div");
+        tag.className =
+          "absolute left-0 top-0 whitespace-nowrap bg-paper/90 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-carbon";
+        this.labels.appendChild(tag);
+        other = { figure, tag, x: entry.x, z: entry.z };
+        this.others.set(entry.id, other);
+      }
+      other.x = entry.x;
+      other.z = entry.z;
+      other.tag.textContent = entry.name;
+    }
+  }
+
+  /** The two things in the hall that are not exhibits: the board of every campaign, and the desk where one is opened. */
+  private buildStations() {
+    const wood = new THREE.MeshStandardMaterial({ color: "#6b4a32", roughness: 0.7 });
+    const light = new THREE.MeshStandardMaterial({ color: "#c58f58", roughness: 0.7 });
+    const add = (station: string, mesh: THREE.Mesh, parent: THREE.Object3D) => {
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.userData.exhibit = station;
+      this.stationPick.push(mesh);
+      parent.add(mesh);
+    };
+
+    const [boardAt, deskAt] = STATIONS;
+    const board = new THREE.Group();
+    board.position.set(boardAt.x, 0, boardAt.z);
+    board.rotation.y = Math.PI / 4;
+    for (const dx of [-0.95, 0.95]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2, 0.12), wood);
+      leg.position.set(dx, 1, 0);
+      add(boardAt.id, leg, board);
+    }
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.3, 0.1), wood);
+    panel.position.set(0, 1.4, 0);
+    add(boardAt.id, panel, board);
+    // Notices pinned to it, one colour for each way a campaign can stand.
+    const notices: [number, number, string][] = [
+      [-0.65, 1.65, LIME],
+      [-0.05, 1.68, "#ffcf5c"],
+      [0.58, 1.62, "#ffffff"],
+      [-0.6, 1.12, "#cfc7b4"],
+      [0.02, 1.15, ORANGE],
+      [0.62, 1.1, LIME],
+    ];
+    for (const [x, y, color] of notices) {
+      const sheet = new THREE.Mesh(
+        new THREE.BoxGeometry(0.44, 0.4, 0.03),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.8 }),
+      );
+      sheet.position.set(x, y, 0.07);
+      add(boardAt.id, sheet, board);
+    }
+    this.scene.add(board);
+
+    const desk = new THREE.Group();
+    desk.position.set(deskAt.x, 0, deskAt.z);
+    desk.rotation.y = Math.PI / 4;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2, 0.12, 0.9), light);
+    top.position.set(0, 0.86, 0);
+    add(deskAt.id, top, desk);
+    const front = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.8, 0.1), wood);
+    front.position.set(0, 0.4, 0.38);
+    add(deskAt.id, front, desk);
+    const plans = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.03, 0.5),
+      new THREE.MeshStandardMaterial({ color: "#3d6f9e", roughness: 0.8 }),
+    );
+    plans.position.set(-0.4, 0.94, 0);
+    add(deskAt.id, plans, desk);
+    // The curator, who stands behind it. Not a visitor: part of the building.
+    const coat = new THREE.MeshStandardMaterial({ color: LIME, roughness: 0.7 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.22, 0.6, 16), coat);
+    body.position.set(0.35, 0.72, -0.55);
+    add(deskAt.id, body, desk);
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 16, 12),
+      new THREE.MeshStandardMaterial({ color: "#d9a37a", roughness: 0.8 }),
+    );
+    head.position.set(0.35, 1.2, -0.55);
+    add(deskAt.id, head, desk);
+    this.scene.add(desk);
+
+    for (const station of STATIONS) {
+      const tag = document.createElement("div");
+      tag.className =
+        "absolute left-0 top-0 hidden whitespace-nowrap border border-carbon bg-lime px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-carbon";
+      tag.textContent = station.label;
+      this.labels.appendChild(tag);
+      this.stationTags.push(tag);
+    }
   }
 
   /** Who is walking: a connected wallet, by its short address, or a guest who has none. */
@@ -588,7 +723,7 @@ export class MuseumScene {
         const angle = (turn / 12) * Math.PI * 2;
         const nx = x + Math.cos(angle) * radius;
         const nz = z + Math.sin(angle) * radius;
-        if (canStand(nx, nz, this.hung)) {
+        if (canStand(nx, nz, this.blocked)) {
           this.visitor.position.set(nx, 0, nz);
           return;
         }
@@ -599,7 +734,7 @@ export class MuseumScene {
 
   /** One step in a direction on the floor, going round whatever is in the way. */
   private step(dx: number, dz: number): boolean {
-    const next = stepFrom({ x: this.visitor.position.x, z: this.visitor.position.z }, dx, dz, this.hung);
+    const next = stepFrom({ x: this.visitor.position.x, z: this.visitor.position.z }, dx, dz, this.blocked);
     if (!next) return false;
     this.visitor.position.set(next.x, 0, next.z);
     return true;
@@ -624,7 +759,7 @@ export class MuseumScene {
     const left = Math.hypot(dx, dz);
     const reach = STRIDE * seconds;
     if (left <= Math.max(reach, 0.12)) {
-      if (canStand(next[0], next[1], this.hung)) this.visitor.position.set(next[0], 0, next[1]);
+      if (canStand(next[0], next[1], this.blocked)) this.visitor.position.set(next[0], 0, next[1]);
       this.path.shift();
       return true;
     }
@@ -675,7 +810,7 @@ export class MuseumScene {
     const seconds = Math.min(0.05, Math.max(0, (time - this.last) / 1000));
     this.last = time;
     this.clock += seconds;
-    this.strollers.step(seconds, this.clock, this.hung);
+    this.strollers.step(seconds, this.clock, this.blocked);
 
     const walked = this.walk(seconds);
     const position = this.visitor.position;
@@ -691,7 +826,11 @@ export class MuseumScene {
     // Who the visitor is standing next to.
     let nearest: string | null = null;
     let least = NEAR;
-    for (const [id, place] of this.places) {
+    const stops: [string, { x: number; z: number }][] = [
+      ...this.places,
+      ...STATIONS.map((station) => [station.id, station] as [string, { x: number; z: number }]),
+    ];
+    for (const [id, place] of stops) {
       const distance = Math.hypot(place.x - position.x, place.z - position.z);
       if (distance < least) {
         least = distance;
@@ -747,6 +886,24 @@ export class MuseumScene {
       const at = this.project(exhibit.x - 0.75, 0.05, exhibit.z + 0.95);
       tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-100%, 0)`;
     }
+    STATIONS.forEach((station, index) => {
+      const tag = this.stationTags[index];
+      const shown = readable && !this.selected && this.room === "unmade";
+      tag.classList.toggle("hidden", !shown);
+      if (!shown) return;
+      const at = this.project(station.x, 2.3, station.z);
+      tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
+    });
+    for (const other of this.others.values()) {
+      const figure = other.figure.position;
+      const pull = this.calm ? 1 : 1 - Math.pow(0.002, seconds);
+      const moving = Math.hypot(other.x - figure.x, other.z - figure.z) > 0.03;
+      figure.x += (other.x - figure.x) * pull;
+      figure.z += (other.z - figure.z) * pull;
+      figure.y = moving && !this.calm ? Math.abs(Math.sin(this.clock * 11)) * 0.04 : 0;
+      const at = this.project(figure.x, 1.05, figure.z);
+      other.tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, -100%)`;
+    }
     const above = this.project(position.x, 1.05, position.z);
     this.visitorTag.style.transform = `translate(${Math.round(above.x)}px, ${Math.round(above.y)}px) translate(-50%, -100%)`;
   };
@@ -768,7 +925,7 @@ export class MuseumScene {
 
   private pick(event: PointerEvent): string | null {
     this.aim(event);
-    const hit = this.raycaster.intersectObjects(this.pickable, false)[0];
+    const hit = this.raycaster.intersectObjects([...this.pickable, ...this.stationPick], false)[0];
     return (hit?.object.userData.exhibit as string | undefined) ?? null;
   }
 
@@ -821,7 +978,7 @@ export class MuseumScene {
     }
     if (this.selected) this.handlers.onSelect(null);
     const spot = this.floorUnder(event);
-    if (spot && canStand(spot.x, spot.z, this.hung)) {
+    if (spot && canStand(spot.x, spot.z, this.blocked)) {
       this.following = true;
       this.walkTo({ x: spot.x, z: spot.z });
     }
@@ -860,6 +1017,9 @@ export class MuseumScene {
       }
     });
     this.renderer.dispose();
+    // Hand the graphics context back at once: a browser only allows a handful, and a page that
+    // is left and returned to must not run out.
+    this.renderer.forceContextLoss();
     this.labels.remove();
     el.remove();
   }

@@ -28,10 +28,10 @@ export function Header() {
           <Link href="/" className="hover:text-lime">
             Museum
           </Link>
-          <Link href="/catalog" className="hover:text-lime">
-            Catalog
+          <Link href="/?board=1" className="hover:text-lime">
+            Campaign board
           </Link>
-          <Link href="/new" className="hover:text-lime">
+          <Link href="/?design=1" className="hover:text-lime">
             Start a campaign
           </Link>
         </nav>

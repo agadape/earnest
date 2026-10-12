@@ -10,7 +10,7 @@ import { type Exhibit, ROOMS, STATUS_WORDS } from "@/lib/museum/plan";
 import { bond, buildEnd } from "@/lib/tanda-jadi";
 
 /** A panel with cut corners and a ruled ground, like a specimen card in a display case. */
-function Frame({ className = "", children }: { className?: string; children: ReactNode }) {
+export function Frame({ className = "", children }: { className?: string; children: ReactNode }) {
   return (
     <div className={`hud-frame ${className}`}>
       <div className="hud-frame-inner">{children}</div>

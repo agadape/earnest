@@ -168,10 +168,20 @@ dialog::backdrop {
   opacity: 0.55;
 }
 .chamber input,
+.chamber select,
 .chamber textarea {
   background-color: var(--color-paper);
   color: var(--color-carbon);
 }
 .chamber h1 {
   display: none;
+}
+
+/* The form at the curator's desk keeps its own headings; only a campaign's title is hidden above. */
+.chamber-form h1 {
+  display: block;
+}
+.chamber legend,
+.chamber label {
+  color: var(--color-paper);
 }

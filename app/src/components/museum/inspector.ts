@@ -175,6 +175,7 @@ export class Inspector {
       }
     });
     this.renderer.dispose();
+    this.renderer.forceContextLoss();
     el.remove();
   }
 }

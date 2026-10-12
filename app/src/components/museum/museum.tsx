@@ -1,19 +1,22 @@
 "use client";
 
 import { useWallet } from "@solana/wallet-adapter-react";
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CampaignList, NetworkNotice, SetupNotice } from "@/components/campaign-list";
 import { Chamber } from "@/components/museum/chamber";
+import { Board, DesignMode } from "@/components/museum/hud";
 import type { Direction, MuseumScene } from "@/components/museum/scene";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
 import { formatDuration, shortAddress } from "@/lib/format";
-import { arrange, type Exhibit, type RoomId, ROOMS, STATUS_WORDS } from "@/lib/museum/plan";
+import { arrange, type Exhibit, type RoomId, ROOMS, STATIONS, STATUS_WORDS } from "@/lib/museum/plan";
 import { buildEnd, fetchCampaigns } from "@/lib/tanda-jadi";
 
 const WIDE = "(min-width: 1024px)";
+type Panel = "board" | "design";
+const PANEL_OF: Record<string, Panel> = { "@board": "board", "@desk": "design" };
 
 /** One line under an exhibit's name: what state it is in, in words, and how full it is. */
 function caption(exhibit: Exhibit, now: number): string {
@@ -28,15 +31,30 @@ function caption(exhibit: Exhibit, now: number): string {
   return `${STATUS_WORDS[status]} · ${seats}`;
 }
 
+/** A name for this browser tab among the visitors: random, and forgotten when the tab closes. */
+function visitorId(): string {
+  const fresh = () => crypto.randomUUID().replace(/-/g, "").slice(0, 24);
+  try {
+    const kept = window.sessionStorage.getItem("earnest:visitor");
+    if (kept) return kept;
+    const made = fresh();
+    window.sessionStorage.setItem("earnest:visitor", made);
+    return made;
+  } catch {
+    return fresh();
+  }
+}
+
 /**
  * The museum: the building in three dimensions, with the things a page can say better than a
- * building laid over it. Everything a visitor can do here can also be done from the list of
- * exhibits beside the building, without a pointer and without the picture.
+ * building laid over it. Everything a visitor can do here can also be done from the lists
+ * beside the floor, without a pointer and without the picture.
  */
 export function Museum() {
   const program = useProgram();
   const now = useNow();
   const { publicKey } = useWallet();
+  const params = useSearchParams();
 
   const load = useCallback(async () => {
     const campaigns = await fetchCampaigns(program);
@@ -64,23 +82,48 @@ export function Museum() {
 
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<MuseumScene | null>(null);
-  const [ready, setReady] = useState(false);
+  // Counts the scenes made so far; zero while there is none. Coming back to this page makes a
+  // new scene, and everything the scene has to be told is told again because this changed.
+  const [sceneId, setSceneId] = useState(0);
   const [unsupported, setUnsupported] = useState(false);
   const [room, setRoom] = useState<RoomId>("unmade");
   const [selected, setSelected] = useState<string | null>(null);
+  const [panel, setPanel] = useState<Panel | null>(null);
   const [near, setNear] = useState<string | null>(null);
+  const [here, setHere] = useState<number | null>(null);
   // The plaque at the door: what this place is, for someone who has never heard of it.
   const [atDoor, setAtDoor] = useState(true);
 
+  /** Opens an exhibit, a station's panel, or nothing. The address bar follows. */
   const select = useCallback((id: string | null) => {
-    setSelected(id);
-    // The address bar follows, so an open exhibit can be linked to and survives a reload.
+    const station = id ? PANEL_OF[id] : undefined;
+    setSelected(station ? null : id);
+    setPanel(station ?? null);
     try {
-      window.history.replaceState(null, "", id ? `/?exhibit=${id}` : "/");
+      window.history.replaceState(
+        null,
+        "",
+        station ? `/?${station}=1` : id ? `/?exhibit=${id}` : "/",
+      );
     } catch {}
   }, []);
 
-  // Start the scene once. Where WebGL is missing the list of campaigns takes its place.
+  // A link can ask for an exhibit, the board or the desk. Links in the header do, and so do
+  // the old addresses of the catalog and the form.
+  const linkedExhibit = params.get("exhibit");
+  const linkedPanel: Panel | null = params.has("board") ? "board" : params.has("design") ? "design" : null;
+  useEffect(() => {
+    if (!linkedExhibit && !linkedPanel) return;
+    // Arriving by a link is past the door already.
+    const timer = setTimeout(() => {
+      setAtDoor(false);
+      setSelected(linkedExhibit);
+      setPanel(linkedExhibit ? null : linkedPanel);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [linkedExhibit, linkedPanel]);
+
+  // Start the scene. Where WebGL is missing the list of campaigns takes its place.
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -103,9 +146,12 @@ export function Museum() {
           calm,
         );
         scene.current = created;
-        setReady(true);
-        const linked = new URLSearchParams(window.location.search).get("exhibit");
-        if (linked) setSelected(linked);
+        setSceneId((count) => count + 1);
+        // Coming back to this page by a plain link to it means the floor, not whatever was
+        // open when it was left.
+        const asked = new URLSearchParams(window.location.search);
+        if (!asked.has("exhibit")) setSelected(null);
+        if (!asked.has("board") && !asked.has("design")) setPanel(null);
       })
       .catch(() => {
         if (!cancelled) setUnsupported(true);
@@ -115,65 +161,110 @@ export function Museum() {
       cancelled = true;
       created?.dispose();
       scene.current = null;
+      // This page is kept alive in the background when another is opened. Its scene is not:
+      // say so, or the next scene would never be given the exhibits.
+      setSceneId(0);
     };
   }, [select]);
 
   useEffect(() => {
-    if (ready && signature !== null) scene.current?.setExhibits(hung);
-  }, [ready, signature, hung]);
+    if (sceneId && signature !== null) scene.current?.setExhibits(hung);
+  }, [sceneId, signature, hung]);
 
   useEffect(() => {
-    if (!ready) return;
-    const wide = window.matchMedia(WIDE).matches;
-    scene.current?.setInsets(
-      // The room's name and its list sit over the left of the floor on a wide window.
-      wide ? 340 : 0,
-      0,
-      0,
-    );
+    if (!sceneId) return;
+    // The room's name and its list sit over the left of the floor on a wide window.
+    scene.current?.setInsets(window.matchMedia(WIDE).matches ? 340 : 0, 0, 0);
     scene.current?.setSelected(selected);
     // Depends on the signature too: an open exhibit that changes rooms is followed there.
-  }, [ready, selected, signature]);
+  }, [sceneId, selected, signature]);
 
   useEffect(() => {
-    if (ready) scene.current?.setVisitor(publicKey ? shortAddress(publicKey) : null);
-  }, [ready, publicKey]);
+    if (sceneId) scene.current?.setVisitor(publicKey ? shortAddress(publicKey) : null);
+  }, [sceneId, publicKey]);
 
   // The first look goes to a room with something in it, the main hall if it has anything.
   const greeted = useRef(false);
   useEffect(() => {
-    if (!ready || !museum || greeted.current) return;
+    if (!sceneId || !museum || greeted.current) return;
     greeted.current = true;
     const busiest = ROOMS.find(({ id }) => museum.counts[id] > 0);
     if (busiest && busiest.id !== "unmade" && !selected) scene.current?.focusRoom(busiest.id);
-  }, [ready, museum, selected]);
+  }, [sceneId, museum, selected]);
+
+  // Tell the others where this visitor stands, once a second, and learn where they are.
+  const name = publicKey ? shortAddress(publicKey) : "Guest";
+  const hasWallet = publicKey !== null;
+  useEffect(() => {
+    if (!sceneId) return;
+    const id = visitorId();
+    let stopped = false;
+    const beat = async () => {
+      const at = scene.current?.whereabouts();
+      if (!at) return;
+      try {
+        const response = await fetch("/api/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, name, wallet: hasWallet, x: at.x, z: at.z }),
+        });
+        if (!response.ok || stopped) return;
+        const result = (await response.json()) as {
+          others: { id: string; name: string; wallet: boolean; x: number; z: number }[];
+          here: number;
+        };
+        scene.current?.setOthers(result.others);
+        setHere(result.here);
+      } catch {
+        // Alone is a fine way to visit a museum; the next beat tries again.
+      }
+    };
+    beat();
+    const timer = setInterval(beat, 1000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      try {
+        navigator.sendBeacon?.("/api/presence", JSON.stringify({ id, leave: true }));
+      } catch {}
+    };
+  }, [sceneId, name, hasWallet]);
 
   // Walking is done with the keyboard anywhere on the page, except while something is being
   // typed or a control has the keys: a button's own Enter and a text box's letters come first.
+  const covered = selected !== null || panel !== null || atDoor;
   useEffect(() => {
     const KEYS: Record<string, Direction> = {
-      w: "up", a: "left", s: "down", d: "right",
-      arrowup: "up", arrowleft: "left", arrowdown: "down", arrowright: "right",
+      w: "up",
+      a: "left",
+      s: "down",
+      d: "right",
+      arrowup: "up",
+      arrowleft: "left",
+      arrowdown: "down",
+      arrowright: "right",
     };
     const busy = (event: KeyboardEvent) => {
       const element = event.target;
       if (!(element instanceof Element) || element === document.body || element === host.current) {
         return false;
       }
-      return element.closest("input, textarea, select, button, a, summary, dialog, aside, [contenteditable]") !== null;
+      return (
+        element.closest("input, textarea, select, button, a, summary, dialog, [contenteditable]") !== null
+      );
     };
     const onDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (selected) select(null);
+        if (selected || panel) select(null);
         else setAtDoor(false);
         return;
       }
-      if (event.ctrlKey || event.metaKey || event.altKey || busy(event) || atDoor) return;
+      if (event.ctrlKey || event.metaKey || event.altKey || busy(event) || covered) return;
       const direction = KEYS[event.key.toLowerCase()];
       if (direction) {
         event.preventDefault();
         scene.current?.key(direction, true);
-      } else if ((event.key === "Enter" || event.key.toLowerCase() === "e") && near && !selected) {
+      } else if ((event.key === "Enter" || event.key.toLowerCase() === "e") && near) {
         event.preventDefault();
         select(near);
       } else if (event.key === "+" || event.key === "=") {
@@ -195,7 +286,7 @@ export function Museum() {
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [selected, select, near, atDoor]);
+  }, [selected, panel, select, near, covered]);
 
   if (!MINT) {
     return (
@@ -208,22 +299,25 @@ export function Museum() {
   if (unsupported) {
     return (
       <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        <div className="rounded-2xl border border-stone-300 bg-white p-5">
+        <div className="rounded-md border border-stone-300 bg-white p-5 text-stone-900">
           <h1 className="text-xl font-semibold">The museum needs 3D graphics this browser did not provide</h1>
           <p className="mt-2 text-sm leading-6 text-stone-600">
             Nothing is lost: every exhibit is a campaign, and they are all listed below.
           </p>
         </div>
-        <CampaignList />
+        <CampaignList searchable />
       </div>
     );
   }
 
-  const here = ROOMS.find((candidate) => candidate.id === room) ?? ROOMS[0];
+  const current = ROOMS.find((candidate) => candidate.id === room) ?? ROOMS[0];
   const inRoom = museum?.exhibits.filter((exhibit) => exhibit.room === room) ?? [];
   const unhung = museum ? museum.counts[room] - inRoom.length : 0;
   const open = selected ? museum?.exhibits.find((exhibit) => exhibit.id === selected) : undefined;
   const nearby = near ? museum?.exhibits.find((exhibit) => exhibit.id === near) : undefined;
+  const station = near ? STATIONS.find((entry) => entry.id === near) : undefined;
+  const hudButton =
+    "flex h-9 shrink-0 items-center whitespace-nowrap border border-paper/30 bg-carbon/85 px-3 text-sm text-paper transition-colors hover:border-lime hover:text-lime focus-visible:outline-2 focus-visible:outline-lime";
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-carbon text-paper">
@@ -231,7 +325,7 @@ export function Museum() {
         ref={host}
         tabIndex={0}
         role="application"
-        aria-label="The museum floor. W, A, S, D or the arrow keys walk; Enter opens the exhibit you stand next to; plus and minus zoom. The exhibits are also listed next to the floor."
+        aria-label="The museum floor. W, A, S, D or the arrow keys walk; Enter opens what you stand next to; plus and minus zoom. Everything on the floor is also listed next to it."
         className="absolute inset-0 cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime"
       />
 
@@ -242,20 +336,18 @@ export function Museum() {
       />
       {/* What a building cannot say: where you are, and what hangs here. */}
       <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6">
-        <div
-          className={`pointer-events-auto max-w-sm ${selected ? "hidden lg:block" : ""}`}
-        >
+        <div className="pointer-events-auto max-w-sm">
           <p className="font-mono text-xs uppercase tracking-widest text-lime">
-            Room {here.code} · {museum ? museum.counts[room] : "…"}{" "}
+            Room {current.code} · {museum ? museum.counts[room] : "…"}{" "}
             {museum?.counts[room] === 1 ? "exhibit" : "exhibits"}
           </p>
           <h1 className="mt-1 text-2xl font-semibold uppercase leading-none tracking-tight sm:text-5xl">
-            {here.name}
+            {current.name}
           </h1>
-          <p className="mt-3 hidden max-w-xs text-sm leading-6 text-paper/75 sm:block">{here.blurb}</p>
+          <p className="mt-3 hidden max-w-xs text-sm leading-6 text-paper/75 sm:block">{current.blurb}</p>
 
           {museum && inRoom.length === 0 && (
-            <p className="mt-4 border-l-2 border-machine pl-3 text-sm text-paper/75">{here.empty}</p>
+            <p className="mt-4 border-l-2 border-machine pl-3 text-sm text-paper/75">{current.empty}</p>
           )}
           {inRoom.length > 0 && (
             <details open className="group mt-4 max-w-xs">
@@ -268,15 +360,12 @@ export function Museum() {
                   <li key={exhibit.id}>
                     <button
                       type="button"
-                      aria-current={exhibit.id === selected ? "true" : undefined}
                       onClick={() => select(exhibit.id)}
                       onFocus={() => scene.current?.setHot(exhibit.id)}
                       onBlur={() => scene.current?.setHot(null)}
                       onMouseEnter={() => scene.current?.setHot(exhibit.id)}
                       onMouseLeave={() => scene.current?.setHot(null)}
-                      className={`block w-full border-l-2 px-3 py-1.5 text-left transition-colors hover:border-lime hover:bg-paper/10 focus-visible:outline-2 focus-visible:outline-lime ${
-                        exhibit.id === selected ? "border-lime bg-paper/10" : "border-paper/20"
-                      }`}
+                      className="block w-full border-l-2 border-paper/20 px-3 py-1.5 text-left transition-colors hover:border-lime hover:bg-paper/10 focus-visible:outline-2 focus-visible:outline-lime"
                     >
                       <span className="font-mono text-[11px] text-lime">{exhibit.code}</span>
                       <span className="block text-sm font-medium leading-5">
@@ -292,10 +381,14 @@ export function Museum() {
               {unhung > 0 && (
                 <p className="mt-2 text-xs leading-5 text-paper/60">
                   {unhung} more {unhung === 1 ? "is" : "are"} in storage: this room has no floor
-                  left. Find {unhung === 1 ? "it" : "them"} in the{" "}
-                  <Link href="/catalog" className="text-lime underline underline-offset-2">
-                    catalog
-                  </Link>
+                  left.{" "}
+                  <button
+                    type="button"
+                    onClick={() => select("@board")}
+                    className="text-lime underline underline-offset-2"
+                  >
+                    Find {unhung === 1 ? "it" : "them"} on the campaign board
+                  </button>
                   .
                 </p>
               )}
@@ -303,7 +396,7 @@ export function Museum() {
           )}
         </div>
 
-        <div className={`flex flex-wrap items-end justify-between gap-3 ${selected ? "hidden lg:flex" : ""}`}>
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <nav aria-label="Rooms" className="pointer-events-auto">
             <p className="font-mono text-[11px] uppercase tracking-widest text-paper/60">Directory</p>
             <ul className="mt-1.5 flex max-w-[calc(100vw-2rem)] gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
@@ -316,7 +409,7 @@ export function Museum() {
                     className={`flex h-9 shrink-0 items-center gap-2 whitespace-nowrap border px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-lime ${
                       entry.id === room
                         ? "border-lime bg-lime text-carbon"
-                        : "border-paper/30 bg-carbon/80 text-paper hover:border-paper"
+                        : "border-paper/30 bg-carbon/85 text-paper hover:border-paper"
                     }`}
                   >
                     <span className="font-mono text-xs">{entry.code}</span>
@@ -328,33 +421,28 @@ export function Museum() {
                 </li>
               ))}
               <li>
-                <button
-                  type="button"
-                  onClick={() => scene.current?.overview()}
-                  className="flex h-9 shrink-0 items-center whitespace-nowrap border border-paper/30 bg-carbon/80 px-3 text-sm text-paper transition-colors hover:border-paper focus-visible:outline-2 focus-visible:outline-lime"
-                >
+                <button type="button" onClick={() => scene.current?.overview()} className={hudButton}>
                   Whole building
                 </button>
               </li>
             </ul>
             <p className="mt-2 hidden max-w-md text-xs leading-5 text-paper/60 sm:block">
-              {publicKey ? (
-                <>
-                  You are walking the floor as{" "}
-                  <span className="font-mono text-paper">{shortAddress(publicKey)}</span>. Visiting
-                  pledges nothing; only taking a seat does. The other figures are scenery: this
-                  museum does not track who is in it.
-                </>
-              ) : (
-                "You are walking as a guest. Connect a wallet and your figure carries its address. The other figures are scenery, not people."
-              )}
+              <span className="font-mono text-lime">{here ?? 1} here now.</span> You walk as{" "}
+              <span className="font-mono text-paper">{name}</span>; a figure with a name over it is
+              another visitor, and the ones without are scenery. Visiting pledges nothing.
             </p>
           </nav>
 
-          <div className="pointer-events-auto flex items-center gap-1.5">
-            <p className="mr-2 hidden bg-carbon/85 px-3 py-2 text-xs text-paper/80 md:block">
-              WASD or arrows walk · click the floor to go there · drag to look · scroll to zoom
+          <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1.5">
+            <p className="mr-1 hidden bg-carbon/85 px-3 py-2 text-xs text-paper/80 xl:block">
+              WASD or arrows walk · click the floor · Enter opens · drag to look
             </p>
+            <button type="button" onClick={() => select("@board")} className={hudButton}>
+              Campaign board
+            </button>
+            <button type="button" onClick={() => select("@desk")} className={hudButton}>
+              Start a campaign
+            </button>
             {(
               [
                 ["Zoom out", "−", 1 / 1.25],
@@ -366,26 +454,20 @@ export function Museum() {
                 type="button"
                 aria-label={label}
                 onClick={() => scene.current?.zoomBy(factor)}
-                className="flex h-9 w-9 items-center justify-center border border-paper/30 bg-carbon/80 text-lg leading-none hover:border-paper focus-visible:outline-2 focus-visible:outline-lime"
+                className={`${hudButton} w-9 justify-center px-0 text-lg leading-none`}
               >
                 {sign}
               </button>
             ))}
-            <Link
-              href="/catalog"
-              className="flex h-9 items-center border border-paper/30 bg-carbon/80 px-3 text-sm hover:border-paper focus-visible:outline-2 focus-visible:outline-lime"
-            >
-              Catalog
-            </Link>
           </div>
         </div>
       </div>
 
-      {nearby && !selected && !atDoor && (
+      {(nearby || station) && !covered && (
         <div className="pointer-events-none absolute inset-x-0 bottom-24 z-10 flex justify-center px-4 sm:bottom-28">
           <button
             type="button"
-            onClick={() => select(nearby.id)}
+            onClick={() => select(near)}
             className="pointer-events-auto flex max-w-full items-center gap-3 border border-carbon bg-lime px-4 py-2 text-left text-carbon shadow-xl hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
           >
             <span className="hidden border border-carbon px-1.5 py-0.5 font-mono text-[11px] sm:inline">
@@ -393,13 +475,70 @@ export function Museum() {
             </span>
             <span className="min-w-0">
               <span className="block font-mono text-[11px] uppercase tracking-wider">
-                Open exhibit {nearby.code}
+                {nearby
+                  ? `Open exhibit ${nearby.code}`
+                  : station?.id === "@board"
+                    ? "Read the board"
+                    : "Talk to the curator"}
               </span>
               <span className="block truncate text-sm font-semibold">
-                {nearby.campaign.title || "Untitled campaign"}
+                {nearby
+                  ? nearby.campaign.title || "Untitled campaign"
+                  : station?.id === "@board"
+                    ? "Every campaign, to search and open"
+                    : "Put a new exhibit on the floor"}
               </span>
             </span>
           </button>
+        </div>
+      )}
+
+      {atDoor && !selected && !panel && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-carbon/70 p-4">
+          <section
+            aria-labelledby="door-title"
+            className="w-full max-w-xl border border-carbon bg-paper p-6 text-stone-900 shadow-2xl sm:p-9"
+          >
+            <p className="font-mono text-xs uppercase tracking-widest text-stone-600">
+              Earnest · admission free
+            </p>
+            <h1
+              id="door-title"
+              className="mt-3 text-3xl font-semibold uppercase leading-[0.95] tracking-tight sm:text-5xl"
+            >
+              Museum of things that almost existed
+            </h1>
+            <p className="mt-4 text-lg leading-7">A museum for the things the world hasn&apos;t made yet.</p>
+            <p className="mt-3 text-sm leading-6 text-stone-700">
+              Every exhibit is a pre-order for something that does not exist yet. Take a seat by
+              putting down a deposit. If enough people join, it gets built. If too few do, you get
+              your deposit back, and the earliest backers get a bonus from a bond its creator
+              locked.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setAtDoor(false)}
+                className="h-11 bg-carbon px-6 text-sm font-medium text-lime hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-carbon"
+              >
+                Walk in
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAtDoor(false);
+                  select("@board");
+                }}
+                className="flex h-11 items-center border border-stone-400 px-5 text-sm font-medium hover:border-stone-900"
+              >
+                Read the campaign board
+              </button>
+            </div>
+            <p className="mt-5 border-t border-stone-300 pt-3 font-mono text-[11px] uppercase tracking-wider text-stone-500">
+              Play money on a test network · nothing here is audited
+            </p>
+          </section>
         </div>
       )}
 
@@ -410,7 +549,7 @@ export function Museum() {
               <NetworkNotice />
             </div>
           ) : (
-            <p aria-busy className="font-mono text-xs uppercase tracking-widest text-paper/70">
+            <p aria-busy className="bg-carbon/85 px-4 py-2 font-mono text-xs uppercase tracking-widest text-paper">
               Opening the museum…
             </p>
           )}
@@ -428,6 +567,12 @@ export function Museum() {
             scene.current?.overview();
           }}
         />
+      )}
+      {panel === "board" && campaigns && now !== null && (
+        <Board campaigns={campaigns} now={now} onOpen={(address) => select(address)} onClose={() => select(null)} />
+      )}
+      {panel === "design" && (
+        <DesignMode onOpened={(address) => select(address)} onClose={() => select(null)} />
       )}
     </div>
   );

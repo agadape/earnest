@@ -215,7 +215,17 @@ function preview(terms: Terms, feeBps: number, mint: PublicKey): Campaign {
   };
 }
 
-export function NewCampaignForm() {
+/**
+ * `onOpened` is told the new campaign's address instead of the page moving to it, and `onTitle`
+ * hears the title as it is typed. The museum's design mode uses both.
+ */
+export function NewCampaignForm({
+  onOpened,
+  onTitle,
+}: {
+  onOpened?: (address: string) => void;
+  onTitle?: (title: string) => void;
+} = {}) {
   const router = useRouter();
   const program = useProgram();
   const { publicKey } = useWallet();
@@ -232,8 +242,10 @@ export function NewCampaignForm() {
   const [attempted, setAttempted] = useState(false);
   const { terms, errors } = useMemo(() => validate(draft), [draft]);
 
-  const set = (key: keyof Draft) => (value: string) =>
+  const set = (key: keyof Draft) => (value: string) => {
     setDraft((current) => ({ ...current, [key]: value }));
+    if (key === "title") onTitle?.(value);
+  };
   const touch = (field: Field) => () => setTouched((current) => ({ ...current, [field]: true }));
   const errorFor = (field: Field) => (attempted || touched[field] ? errors[field] : undefined);
 
@@ -278,7 +290,10 @@ export function NewCampaignForm() {
     setDraft(INITIAL);
     setTouched({});
     setAttempted(false);
-    router.push(`/campaign/${campaignAddress(publicKey, id).toBase58()}`);
+    onTitle?.("");
+    const address = campaignAddress(publicKey, id).toBase58();
+    if (onOpened) onOpened(address);
+    else router.push(`/campaign/${address}`);
   };
 
   return (

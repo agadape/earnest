@@ -114,12 +114,20 @@ export type Kind = (typeof KINDS)[number];
 
 const SCREEN_WORDS = /\b(cli|terminal|command|extension|code|dashboard|editor|ide|app|site|api)\b/i;
 
-/** The same campaign always gets the same object: picked from its title and its address. */
-export function kindOf(campaign: Pick<Campaign, "title" | "address">): Kind {
-  if (SCREEN_WORDS.test(campaign.title)) return "screen";
-  const bytes = campaign.address.toBytes();
+/**
+ * The same title always gets the same object, so the object can be shown while a campaign is
+ * still being written. A campaign without a title falls back on its address.
+ */
+export function kindOf(campaign: { title: string; address?: { toBytes(): Uint8Array } }): Kind {
+  const title = campaign.title.trim();
+  if (SCREEN_WORDS.test(title)) return "screen";
   const others = KINDS.filter((kind) => kind !== "screen");
-  return others[(bytes[0] + bytes[7] * 3 + bytes[31] * 7) % others.length];
+  const bytes = title
+    ? new TextEncoder().encode(title.toLowerCase())
+    : (campaign.address?.toBytes() ?? new Uint8Array([0]));
+  let sum = 7;
+  for (const byte of bytes) sum = (sum * 31 + byte) % 9973;
+  return others[sum % others.length];
 }
 
 export interface Exhibit {
@@ -286,3 +294,12 @@ export function stepFrom(
   }
   return null;
 }
+
+/**
+ * The two things in the main hall that are not exhibits. A visitor walks up to them as to an
+ * exhibit; what they open is up to the page.
+ */
+export const STATIONS = [
+  { id: "@board", x: -6.9, z: -4.5, label: "Campaign board" },
+  { id: "@desk", x: -6.9, z: 4.5, label: "Curator · start a campaign" },
+] as const;
