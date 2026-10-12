@@ -128,6 +128,10 @@ Rooms follow the campaign's own state and nothing else:
   moved: with strollers it is drawn up to 24 times a second, and not at all for someone who
   asked their system for less motion. Their walking was not watched, for the same reason
   the visitor's was not.
+- **There is a guided tour.** Asked for by a first reader who did not know where to start. Seven
+  stops, each a sentence or two in plain words and a walk to the room it is about; offered first
+  on the plaque at the door and again from the directory (`tour.tsx`). It says what happens,
+  and at the last stop that this is play money on a test network and unaudited.
 - **Nothing is a page of its own.** `/catalog` and `/new` redirect into the museum, where
   the campaign board and the curator's desk open as panels over the floor. `/campaign/<address>`
   and `/creator/<address>` still answer, because they are the addresses that get shared and

@@ -66,10 +66,12 @@ export interface SceneHandlers {
 interface Wanderer {
   figure: THREE.Group;
   tag: HTMLDivElement;
-  room: Room;
-  goal: { x: number; z: number };
+  /** The points still to walk through, door by door, to where it is going. */
+  path: [number, number][];
   wait: number;
   speed: number;
+  /** How long it has been unable to take a step. */
+  stuck: number;
 }
 
 // When the only thing moving is the strollers, this many pictures a second is plenty.
@@ -710,7 +712,7 @@ export class MuseumScene {
         "absolute left-0 top-0 hidden whitespace-nowrap bg-carbon/55 px-1 py-px font-mono text-[9px] uppercase tracking-wider text-paper/80";
       tag.textContent = entry.name;
       this.labels.appendChild(tag);
-      this.wanderers.set(entry.id, { figure, tag, room, goal: start, wait: Math.random() * 5, speed: 0.8 + Math.random() * 0.6 });
+      this.wanderers.set(entry.id, { figure, tag, path: [], wait: Math.random() * 2, speed: 1.5 + Math.random() * 0.9, stuck: 0 });
     });
     this.dirty = true;
   }
@@ -725,31 +727,47 @@ export class MuseumScene {
     return { x: room.x, z: room.z + 0.2 };
   }
 
-  /** Moves every stroller on: each walks to a spot, stands a while, and picks another. */
+  /**
+   * Moves every stroller on. Each one picks somewhere to go, often in another room, walks there
+   * through the doors, looks about for a moment, and picks again.
+   */
   private stroll(seconds: number) {
     for (const wanderer of this.wanderers.values()) {
       const { figure } = wanderer;
+      const at = { x: figure.position.x, z: figure.position.z };
       if (wanderer.wait > 0) {
         wanderer.wait -= seconds;
-        if (wanderer.wait <= 0) wanderer.goal = this.somewhere(wanderer.room);
+        if (wanderer.wait <= 0) {
+          const here = ROOMS.find((room) => room.id === roomAt(at.x, at.z)) ?? ROOMS[0];
+          const room = Math.random() < 0.5 ? ROOMS[Math.floor(Math.random() * ROOMS.length)] : here;
+          wanderer.path = route(at, this.somewhere(room));
+          wanderer.stuck = 0;
+        }
         continue;
       }
-      const dx = wanderer.goal.x - figure.position.x;
-      const dz = wanderer.goal.z - figure.position.z;
-      const left = Math.hypot(dx, dz);
-      const reach = wanderer.speed * seconds;
-      if (left <= reach + 0.02) {
-        wanderer.wait = 3 + Math.random() * 7;
+      const next = wanderer.path[0];
+      if (!next) {
+        wanderer.wait = 0.6 + Math.random() * 2.4;
         figure.position.y = 0;
         continue;
       }
-      const next = stepFrom({ x: figure.position.x, z: figure.position.z }, (dx / left) * reach, (dz / left) * reach, this.blocked);
-      // Nowhere to go from here: stand a moment and choose somewhere else.
-      if (!next) {
-        wanderer.wait = 0.5 + Math.random() * 2;
+      const dx = next[0] - at.x;
+      const dz = next[1] - at.z;
+      const left = Math.hypot(dx, dz);
+      const reach = wanderer.speed * seconds;
+      if (left <= Math.max(reach, 0.15)) {
+        wanderer.path.shift();
         continue;
       }
-      figure.position.set(next.x, Math.abs(Math.sin(this.clock * 9 + figure.id)) * 0.03, next.z);
+      const step = stepFrom(at, (dx / left) * reach, (dz / left) * reach, this.blocked);
+      // Nowhere to go from here for a while: give this errand up and choose another.
+      if (!step) {
+        wanderer.stuck += seconds;
+        if (wanderer.stuck > 0.5) wanderer.path = [];
+        continue;
+      }
+      wanderer.stuck = 0;
+      figure.position.set(step.x, Math.abs(Math.sin(this.clock * 10 + figure.id)) * 0.04, step.z);
     }
   }
 

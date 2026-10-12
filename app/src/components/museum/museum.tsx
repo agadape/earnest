@@ -9,6 +9,7 @@ import { CampaignView } from "@/components/campaign-view";
 import { Chamber } from "@/components/museum/chamber";
 import { Board, CreatorRecord, DesignMode, PlotPicker } from "@/components/museum/hud";
 import type { Direction, MuseumScene } from "@/components/museum/scene";
+import { TOUR, Tour } from "@/components/museum/tour";
 import { useNotes } from "@/components/museum/use-notes";
 import { useNow, usePolled, useProgram } from "@/lib/chain";
 import { MINT } from "@/lib/env";
@@ -111,6 +112,8 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
   const [panel, setPanel] = useState<Panel | null>(null);
   const [creator, setCreator] = useState<string | null>(null);
   const [untouched, setUntouched] = useState(true);
+  // The guided tour: which stop it is at, or `null` when nobody is being shown round.
+  const [tour, setTour] = useState<number | null>(null);
   // Build mode: the campaign whose creator is choosing a plot, and the plot picked so far.
   const [placing, setPlacing] = useState<string | null>(null);
   const [chosen, setChosen] = useState<number | null>(null);
@@ -343,6 +346,14 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     );
   }, [sceneId, strollerKey]);
 
+  // Each stop of the tour is about a room; the view and the visitor go there.
+  useEffect(() => {
+    if (!sceneId || tour === null) return;
+    const room = TOUR[tour]?.room;
+    if (room) scene.current?.focusRoom(room);
+    else scene.current?.overview();
+  }, [sceneId, tour]);
+
   // Walking is done with the keyboard anywhere on the page, except while something is being
   // typed or a control has the keys: a button's own Enter and a text box's letters come first.
   const covered = selected !== null || panel !== null || atDoor;
@@ -369,6 +380,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
     const onDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (placing) setPlacing(null);
+        else if (tour !== null && !selected && !panel) setTour(null);
         else if (selected || panel) select(null);
         else setAtDoor(false);
         return;
@@ -400,7 +412,7 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [selected, panel, select, near, covered, placing]);
+  }, [selected, panel, select, near, covered, placing, tour]);
 
   if (!MINT) {
     return (
@@ -582,6 +594,15 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
                   Whole building
                 </button>
               </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setTour(0)}
+                  className={`${hudButton} border-lime text-lime`}
+                >
+                  Guided tour
+                </button>
+              </li>
             </ul>
             <p className="mt-2 hidden max-w-md text-xs leading-5 text-paper/60 sm:block">
               <span className="font-mono text-lime">{here ?? 1} here now.</span> You walk as{" "}
@@ -678,8 +699,18 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
               <button
                 type="button"
                 autoFocus
-                onClick={() => setAtDoor(false)}
+                onClick={() => {
+                  setAtDoor(false);
+                  setTour(0);
+                }}
                 className="h-11 bg-carbon px-6 text-sm font-medium text-lime hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-carbon"
+              >
+                Take the 1-minute tour
+              </button>
+              <button
+                type="button"
+                onClick={() => setAtDoor(false)}
+                className="flex h-11 items-center border border-stone-400 px-5 text-sm font-medium hover:border-stone-900"
               >
                 Walk in
               </button>
@@ -742,6 +773,9 @@ export function Museum({ exhibit: givenExhibit, creator: givenCreator }: { exhib
       )}
       {panel === "record" && creator && (
         <CreatorRecord address={creator} now={now} onOpen={select} onClose={() => select(null)} />
+      )}
+      {tour !== null && !selected && !panel && !placing && !atDoor && (
+        <Tour step={tour} onStep={setTour} onClose={() => setTour(null)} />
       )}
       {beingPlaced && !selected && !panel && (
         <PlotPicker
