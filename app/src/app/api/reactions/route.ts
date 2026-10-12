@@ -57,14 +57,27 @@ async function answer(wallet: string | null): Promise<ReactionsAnswer> {
   };
 }
 
+/**
+ * What went wrong with the database, in words that help whoever set it up and give nothing
+ * away: the kind of failure, never the key or the address.
+ */
+function why(error: unknown): string {
+  console.error("reactions:", error);
+  const status = /answered (\d{3})/.exec(error instanceof Error ? error.message : "")?.[1];
+  if (status === "401" || status === "403") return "The database refused the server's key.";
+  if (status === "404") return "The table or the counting function is missing: run supabase/reactions.sql.";
+  if (status) return `The database answered ${status}.`;
+  return "The database could not be reached: check SUPABASE_URL.";
+}
+
 const NOT_SET_UP: ReactionsAnswer = { configured: false, counts: {}, mine: [] };
 
 export async function GET(request: Request) {
   if (!SUPABASE_READY) return Response.json(NOT_SET_UP);
   try {
     return Response.json(await answer(address(new URL(request.url).searchParams.get("wallet"))));
-  } catch {
-    return Response.json({ error: "The reactions could not be read." }, { status: 502 });
+  } catch (error) {
+    return Response.json({ error: "The reactions could not be read.", reason: why(error) }, { status: 502 });
   }
 }
 
@@ -112,7 +125,7 @@ export async function POST(request: Request) {
     }
     kept = null;
     return Response.json(await answer(wallet));
-  } catch {
-    return Response.json({ error: "The reaction could not be saved." }, { status: 502 });
+  } catch (error) {
+    return Response.json({ error: "The reaction could not be saved.", reason: why(error) }, { status: 502 });
   }
 }
