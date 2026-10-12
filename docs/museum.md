@@ -62,10 +62,16 @@ Added: `three`, `@types/three`. Removed: nothing. The spike pages were deleted.
 | Part | Where | What it does |
 |---|---|---|
 | Floor plan and hanging rule | `app/src/lib/museum/plan.ts` | Rooms, places, which room a campaign's state puts it in, which stand-in object it gets. No rendering. Tested in `plan.test.ts`. |
-| Scene | `app/src/components/museum/scene.ts` | The building, exhibits, visitor and camera in three.js. Reports what is pointed at and clicked. Knows nothing about wallets. Loaded only on the museum page. |
+| Scene | `app/src/components/museum/scene.ts` | The building, exhibits, the walking visitor and the camera in three.js. Reports what is pointed at, stood next to and clicked. Knows nothing about wallets. Loaded only on the museum page. |
 | Page | `app/src/components/museum/museum.tsx` | Reads the campaigns, hangs them, lays the room name, the list of exhibits, the directory and the exhibit panel over the floor. |
 | Exhibit panel | the existing `CampaignView`, in a narrow column | Every action a campaign page has: pledge, sell a seat, brake, updates. No second copy of that logic. |
 | Catalog | `/catalog` | The same campaigns as a list. Also what is shown where WebGL is missing. |
+
+Getting around: W, A, S, D or the arrow keys walk the visitor and the camera follows; a click or
+tap on the floor walks there; Enter opens the exhibit the visitor stands next to; dragging looks
+around and the wheel zooms. Choosing a room from the directory or an exhibit from the list sends
+the visitor there through the doors. Where the floor can be stood on, and the way through the
+doors, are rules in `plan.ts`, and the tests walk a full museum from the door to every exhibit.
 
 Rooms follow the campaign's own state and nothing else:
 
@@ -83,8 +89,11 @@ Rooms follow the campaign's own state and nothing else:
 - **Rooms have a fixed number of places** (8, 6, 6 and 12). The newest campaigns are hung; the
   rest are counted in the room's label and found in the catalog.
 - **Other visitors are not shown.** There is no shared presence, and none is simulated. The one
-  marker on the floor is the connected wallet. The lit seats in front of an exhibit are real:
-  they are the seats taken on chain.
-- **Frame rate was not measured.** The scene draws only when something moves. It was looked at
+  figure on the floor is the person looking: a guest, or a connected wallet carrying its
+  address. The lit seats in front of an exhibit are real: they are the seats taken on chain.
+- **Walking was tested as rules, not watched.** The tests step a visitor across a full museum.
+  The browser used for checking does not run animation frames in the background, so nobody has
+  yet watched the figure walk on this machine.
+- **Frame rate was not measured.** The scene is small and draws every frame. It was looked at
   on one laptop and at phone width in an emulated viewport, not on a phone.
 - **The floor signs use a system font**, drawn once to a texture.

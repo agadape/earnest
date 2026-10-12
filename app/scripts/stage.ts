@@ -94,7 +94,8 @@ const clock = (date = new Date()) => date.toTimeString().slice(0, 8);
 // Whole cents, rounded down, the way the app shows amounts.
 const cents = (amount: bigint) => usd(amount - (amount % 10_000n));
 const log = (message: string) => console.log(`${clock()}  ${message}`);
-const link = (campaign: Campaign) => `${SITE_URL}/campaign/${campaign.address.toBase58()}`;
+// Opens the museum with that exhibit's panel showing.
+const link = (campaign: Campaign) => `${SITE_URL}/?exhibit=${campaign.address.toBase58()}`;
 
 // Payouts can be sent by anyone, so the app's own server may get there first. Then the money
 // has already arrived and there is nothing left for this script to send.

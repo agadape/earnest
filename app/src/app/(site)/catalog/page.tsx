@@ -64,7 +64,7 @@ export default function Catalog() {
           Campaigns
         </h2>
         <div className="mt-4">
-          <CampaignList />
+          <CampaignList searchable />
         </div>
       </section>
     </div>

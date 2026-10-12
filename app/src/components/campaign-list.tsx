@@ -11,14 +11,30 @@ import {
   bonusSeatsLeft,
   buildEnd,
   type Campaign,
+  type Status,
   fetchCampaigns,
   refundIfFailed,
   statusAt,
 } from "@/lib/tanda-jadi";
 
-export function CampaignList() {
+const FILTERS: { key: "all" | Status; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "funding", label: "Taking pledges" },
+  { key: "building", label: "Being built" },
+  { key: "completed", label: "Completed" },
+  { key: "failed", label: "Didn't fill" },
+  { key: "braked", label: "Stopped by backers" },
+];
+
+/**
+ * Every campaign as cards. With `searchable` it also offers a search by title and a filter by
+ * state, which is what the catalog is for: finding one campaign without walking the museum.
+ */
+export function CampaignList({ searchable = false }: { searchable?: boolean }) {
   const program = useProgram();
   const now = useNow();
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | Status>("all");
   const load = useCallback(async () => {
     const campaigns = await fetchCampaigns(program);
     return (
@@ -45,6 +61,67 @@ export function CampaignList() {
     );
   }
 
+  const words = query.trim().toLowerCase();
+  const narrowed = words !== "" || filter !== "all";
+  const found = campaigns.filter(
+    (campaign) =>
+      (filter === "all" || statusAt(campaign, now) === filter) &&
+      (words === "" ||
+        campaign.title.toLowerCase().includes(words) ||
+        campaign.address.toBase58().toLowerCase().startsWith(words) ||
+        campaign.creator.toBase58().toLowerCase().startsWith(words)),
+  );
+  const controls = searchable && (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="font-mono text-xs uppercase tracking-widest text-stone-500">Search</span>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="A title, or the start of a campaign or creator address"
+          className="mt-1.5 block h-11 w-full rounded-sm border border-stone-400 bg-white px-3 text-sm text-stone-900 placeholder:text-stone-400 hover:border-stone-600"
+        />
+      </label>
+      <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
+        {FILTERS.map(({ key, label }) => {
+          const count =
+            key === "all"
+              ? campaigns.length
+              : campaigns.filter((campaign) => statusAt(campaign, now) === key).length;
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={filter === key}
+              onClick={() => setFilter(key)}
+              className={`flex h-9 items-center gap-2 rounded-sm border px-3 text-sm transition-colors ${
+                filter === key
+                  ? "border-carbon bg-carbon text-lime"
+                  : "border-stone-400 bg-white text-stone-800 hover:border-stone-700"
+              }`}
+            >
+              {label}
+              <span className="font-mono text-xs opacity-70">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+  if (narrowed) {
+    return (
+      <div className="space-y-6">
+        {controls}
+        {found.length > 0 ? (
+          <CampaignCards campaigns={found} now={now} />
+        ) : (
+          <p className="text-sm leading-6 text-stone-600">Nothing in the catalog matches that.</p>
+        )}
+      </div>
+    );
+  }
+
   // What can still be joined comes first. What has ended stays on the page: it is the record of
   // how campaigns here actually turned out.
   const isOpen = (campaign: Campaign) => {
@@ -56,6 +133,7 @@ export function CampaignList() {
 
   return (
     <div className="space-y-10">
+      {controls}
       {open.length > 0 ? (
         <CampaignCards campaigns={open} now={now} />
       ) : (
