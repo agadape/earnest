@@ -2,6 +2,11 @@
 
 Pre-orders that pay the buyer back **with a bonus** when too few people join.
 
+[![Earnest: pre-orders that pay you back](docs/demo-thumbnail.png)](https://inearnest.vercel.app)
+
+**Try it:** <https://inearnest.vercel.app> runs on Solana devnet with a play-money wallet, so
+nothing needs installing and no real money is involved.
+
 *Earnest money* is the small deposit you put down to show you are serious about buying
 something. The Indonesian for it is *tanda jadi*, the name this project started under and the
 one its program and code still carry.
